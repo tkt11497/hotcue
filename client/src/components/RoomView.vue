@@ -7,6 +7,7 @@ import DebugPanel from "./DebugPanel.vue";
 
 const props = defineProps<{
   roomId: string;
+  roomName: string;
   users: readonly RoomUser[];
   myId: string;
   peerStates: Map<string, PeerState>;
@@ -43,7 +44,7 @@ const rttClass = computed(() => {
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
           </svg>
-          {{ roomId }}
+          {{ roomName || roomId }}
         </h2>
         <span class="user-count">{{ users.length }} {{ users.length === 1 ? "user" : "users" }}</span>
       </div>

@@ -1,11 +1,17 @@
 import { ref, reactive } from "vue";
-import type { Socket } from "socket.io-client";
 
 export interface PeerState {
   peerId: string;
   stream: MediaStream | null;
   connectionState: string;
 }
+
+export type SendSignalFn = (to: string, type: string, payload: any) => void;
+
+const ICE_SERVERS: RTCIceServer[] = [
+  { urls: "stun:stun.l.google.com:19302" },
+  { urls: "stun:stun1.l.google.com:19302" },
+];
 
 export function useWebRTC() {
   const localStream = ref<MediaStream | null>(null);
@@ -15,7 +21,7 @@ export function useWebRTC() {
 
   const peerConnections = new Map<string, RTCPeerConnection>();
   const pendingCandidates = new Map<string, RTCIceCandidateInit[]>();
-  let socketRef: Socket | null = null;
+  let sendSignalFn: SendSignalFn | null = null;
 
   async function startMicrophone() {
     try {
@@ -48,6 +54,14 @@ export function useWebRTC() {
     });
   }
 
+  function setup(sendSignal: SendSignalFn) {
+    sendSignalFn = sendSignal;
+  }
+
+  function teardown() {
+    sendSignalFn = null;
+  }
+
   function createPeerConnection(peerId: string): RTCPeerConnection {
     const existing = peerConnections.get(peerId);
     if (existing) {
@@ -56,7 +70,7 @@ export function useWebRTC() {
       peerConnections.delete(peerId);
     }
 
-    const pc = new RTCPeerConnection({ iceServers: [] });
+    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
     peerConnections.set(peerId, pc);
     pendingCandidates.set(peerId, []);
 
@@ -88,10 +102,7 @@ export function useWebRTC() {
     pc.onicecandidate = (event) => {
       if (event.candidate) {
         console.log(`[rtc] sending ICE candidate to ${peerId}: ${event.candidate.candidate.substring(0, 50)}...`);
-        socketRef?.emit("signal:ice-candidate", {
-          to: peerId,
-          candidate: event.candidate.toJSON(),
-        });
+        sendSignalFn?.(peerId, "ice-candidate", event.candidate.toJSON());
       } else {
         console.log(`[rtc] ICE gathering complete for ${peerId}`);
       }
@@ -149,9 +160,9 @@ export function useWebRTC() {
       await pc.setLocalDescription(offer);
       console.log(`[rtc] local description set, signalingState: ${pc.signalingState}`);
 
-      socketRef?.emit("signal:offer", {
-        to: peerId,
-        offer: { type: pc.localDescription!.type, sdp: pc.localDescription!.sdp },
+      sendSignalFn?.(peerId, "offer", {
+        type: pc.localDescription!.type,
+        sdp: pc.localDescription!.sdp,
       });
       console.log(`[rtc] offer sent to ${peerId}`);
     } catch (err) {
@@ -174,9 +185,9 @@ export function useWebRTC() {
       await pc.setLocalDescription(answer);
       console.log(`[rtc] local description set, signalingState: ${pc.signalingState}`);
 
-      socketRef?.emit("signal:answer", {
-        to: peerId,
-        answer: { type: pc.localDescription!.type, sdp: pc.localDescription!.sdp },
+      sendSignalFn?.(peerId, "answer", {
+        type: pc.localDescription!.type,
+        sdp: pc.localDescription!.sdp,
       });
       console.log(`[rtc] answer sent to ${peerId}`);
     } catch (err) {
@@ -234,44 +245,6 @@ export function useWebRTC() {
     peerConnections.clear();
     pendingCandidates.clear();
     peerStates.clear();
-  }
-
-  function attachSocketListeners(socket: Socket) {
-    socketRef = socket;
-
-    socket.on("peer:joined", async (user: { id: string }) => {
-      console.log(`[signal] peer:joined ${user.id}`);
-      await createOffer(user.id);
-    });
-
-    socket.on("peer:left", (data: { id: string }) => {
-      console.log(`[signal] peer:left ${data.id}`);
-      removePeer(data.id);
-    });
-
-    socket.on("signal:offer", async (data: { from: string; offer: RTCSessionDescriptionInit }) => {
-      console.log(`[signal] received offer from ${data.from}`);
-      await handleOffer(data.from, data.offer);
-    });
-
-    socket.on("signal:answer", async (data: { from: string; answer: RTCSessionDescriptionInit }) => {
-      console.log(`[signal] received answer from ${data.from}`);
-      await handleAnswer(data.from, data.answer);
-    });
-
-    socket.on("signal:ice-candidate", async (data: { from: string; candidate: RTCIceCandidateInit }) => {
-      console.log(`[signal] received ice-candidate from ${data.from}`);
-      await handleIceCandidate(data.from, data.candidate);
-    });
-  }
-
-  function detachSocketListeners(socket: Socket) {
-    socket.off("peer:joined");
-    socket.off("peer:left");
-    socket.off("signal:offer");
-    socket.off("signal:answer");
-    socket.off("signal:ice-candidate");
-    socketRef = null;
   }
 
   function getPeerConnectionStates(): Map<string, { connectionState: string; iceState: string }> {
@@ -332,8 +305,12 @@ export function useWebRTC() {
     startMicrophone,
     stopMicrophone,
     toggleMute,
-    attachSocketListeners,
-    detachSocketListeners,
+    setup,
+    teardown,
+    createOffer,
+    handleOffer,
+    handleAnswer,
+    handleIceCandidate,
     closeAllPeers,
     removePeer,
     getPeerConnectionStates,

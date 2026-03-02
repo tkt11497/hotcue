@@ -1,145 +1,50 @@
 <script setup lang="ts">
-import { ref, watch, onMounted, onUnmounted } from "vue";
-import { useSignaling } from "./composables/useSignaling";
-import { useWebRTC } from "./composables/useWebRTC";
-import { useNativeBackground } from "./composables/useNativeBackground";
-import LobbyView from "./components/LobbyView.vue";
-import RoomView from "./components/RoomView.vue";
+import { useRouter } from "vue-router";
+import { useAuth } from "./composables/useAuth";
 
-const signaling = useSignaling();
-const webrtc = useWebRTC();
-const nativeBg = useNativeBackground();
+const { userProfile, authReady, isAdmin, isSecurityRole, logout } = useAuth();
+const router = useRouter();
 
-const pcStates = ref<Map<string, { connectionState: string; iceState: string }>>(new Map());
-const latencyInfo = ref<{ rtt: number | null; jitter: number | null; packetsLost: number }>({
-  rtt: null, jitter: null, packetsLost: 0,
-});
-let pcPollTimer: ReturnType<typeof setInterval> | null = null;
-
-function startPolling() {
-  pcPollTimer = setInterval(async () => {
-    pcStates.value = webrtc.getPeerConnectionStates();
-    latencyInfo.value = await webrtc.getLatencyStats();
-  }, 1000);
+async function handleLogout() {
+  await logout();
+  router.push("/login");
 }
-function stopPolling() {
-  if (pcPollTimer) { clearInterval(pcPollTimer); pcPollTimer = null; }
-  latencyInfo.value = { rtt: null, jitter: null, packetsLost: 0 };
-}
-onUnmounted(stopPolling);
-
-const isNativeApp = !!(window as any).Capacitor?.isNativePlatform?.();
-const serverUrl = ref(
-  isNativeApp
-    ? "http://192.168.200.167:3002"
-    : `https://${window.location.hostname}:3001`
-);
-const username = ref("");
-const targetRoom = ref("general");
-const connectionError = ref<string | null>(null);
-
-onMounted(() => {
-  const saved = localStorage.getItem("gcn_username");
-  if (saved) username.value = saved;
-});
-
-async function handleJoin() {
-  if (!username.value.trim() || !targetRoom.value.trim()) return;
-  localStorage.setItem("gcn_username", username.value);
-
-  try {
-    connectionError.value = null;
-    signaling.connect(serverUrl.value);
-
-    await new Promise<void>((resolve, reject) => {
-      const timeout = setTimeout(() => reject(new Error("Connection timeout")), 5000);
-      const check = setInterval(() => {
-        if (signaling.connected.value) {
-          clearTimeout(timeout);
-          clearInterval(check);
-          resolve();
-        }
-      }, 100);
-    });
-
-    await webrtc.startMicrophone();
-    webrtc.attachSocketListeners(signaling.getRawSocket()!);
-    signaling.joinRoom(targetRoom.value, username.value);
-    startPolling();
-    nativeBg.start(targetRoom.value, {
-      onToggleMute: () => {
-        webrtc.toggleMute();
-        nativeBg.updateMicrophoneState(webrtc.isMuted.value);
-      },
-      onHangup: () => handleLeave(),
-    });
-  } catch (err: any) {
-    connectionError.value = err.message || "Failed to connect";
-  }
-}
-
-function handleLeave() {
-  nativeBg.stop();
-  stopPolling();
-  webrtc.detachSocketListeners(signaling.getRawSocket()!);
-  webrtc.closeAllPeers();
-  webrtc.stopMicrophone();
-  signaling.leaveRoom();
-}
-
-watch(
-  () => signaling.connected.value,
-  (val) => {
-    if (!val && signaling.roomId.value) {
-      connectionError.value = "Disconnected from server";
-    }
-  }
-);
 </script>
 
 <template>
-  <div class="app">
-    <header class="app-header">
-      <div class="logo">
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-          <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-          <line x1="12" y1="19" x2="12" y2="23" />
-          <line x1="8" y1="23" x2="16" y2="23" />
-        </svg>
-        <h1>GCN Voice</h1>
+  <div class="app" v-if="authReady">
+    <header class="app-header" v-if="userProfile">
+      <div class="header-left">
+        <router-link to="/" class="logo">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+            <line x1="12" y1="19" x2="12" y2="23" />
+            <line x1="8" y1="23" x2="16" y2="23" />
+          </svg>
+          <h1>GCN Voice</h1>
+        </router-link>
+        <nav class="nav-links">
+          <router-link to="/" class="nav-link">Voice</router-link>
+          <router-link v-if="isSecurityRole" to="/scanner" class="nav-link">Scanner</router-link>
+          <router-link v-if="isAdmin" to="/admin" class="nav-link">Admin</router-link>
+        </nav>
       </div>
-      <span class="badge" :class="signaling.connected.value ? 'online' : 'offline'">
-        {{ signaling.connected.value ? "Connected" : "Offline" }}
-      </span>
+      <div class="header-right">
+        <span class="user-info">
+          {{ userProfile.displayName }}
+          <span class="role-badge" :class="userProfile.role">{{ userProfile.role.replace("_", " ") }}</span>
+        </span>
+        <button class="btn-logout" @click="handleLogout">Logout</button>
+      </div>
     </header>
 
     <main class="app-main">
-      <LobbyView
-        v-if="!signaling.roomId.value"
-        v-model:username="username"
-        v-model:room="targetRoom"
-        v-model:server="serverUrl"
-        :error="connectionError || webrtc.audioError.value"
-        :connecting="false"
-        @join="handleJoin"
-      />
-      <RoomView
-        v-else
-        :room-id="signaling.roomId.value!"
-        :users="signaling.users.value"
-        :my-id="signaling.myId.value!"
-        :peer-states="webrtc.peerStates"
-        :is-muted="webrtc.isMuted.value"
-        :socket-connected="signaling.connected.value"
-        :socket-id="signaling.myId.value"
-        :mic-stream="webrtc.localStream.value"
-        :peer-connection-states="pcStates"
-        :latency="latencyInfo"
-        @toggle-mute="webrtc.toggleMute(); nativeBg.updateMicrophoneState(webrtc.isMuted.value)"
-        @leave="handleLeave"
-      />
+      <router-view />
     </main>
+  </div>
+  <div v-else class="loading-screen">
+    <p>Loading...</p>
   </div>
 </template>
 
@@ -185,13 +90,35 @@ body {
   flex-direction: column;
 }
 
+.loading-screen {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+}
+
 .app-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 16px 24px;
+  padding: 12px 24px;
   border-bottom: 1px solid var(--border);
   background: var(--surface);
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
 }
 
 .logo {
@@ -199,6 +126,7 @@ body {
   align-items: center;
   gap: 10px;
   color: var(--primary);
+  text-decoration: none;
 }
 
 .logo h1 {
@@ -207,23 +135,95 @@ body {
   letter-spacing: -0.5px;
 }
 
-.badge {
-  font-size: 0.75rem;
+.nav-links {
+  display: flex;
+  gap: 4px;
+}
+
+.nav-link {
+  color: var(--text-muted);
+  text-decoration: none;
+  font-size: 0.85rem;
   font-weight: 600;
-  padding: 4px 12px;
-  border-radius: 20px;
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  transition: all 0.2s;
+}
+
+.nav-link:hover {
+  color: var(--text);
+  background: var(--surface-hover);
+}
+
+.nav-link.router-link-active {
+  color: var(--primary);
+  background: rgba(108, 92, 231, 0.1);
+}
+
+.user-info {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.role-badge {
+  font-size: 0.7rem;
+  font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.5px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: rgba(108, 92, 231, 0.15);
+  color: var(--primary);
 }
 
-.badge.online {
-  background: rgba(46, 204, 113, 0.15);
-  color: var(--success);
-}
-
-.badge.offline {
+.role-badge.admin {
   background: rgba(231, 76, 60, 0.15);
+  color: #e74c3c;
+}
+
+.role-badge.holding_admin {
+  background: rgba(243, 156, 18, 0.15);
+  color: #f39c12;
+}
+
+.role-badge.room_admin {
+  background: rgba(52, 152, 219, 0.15);
+  color: #3498db;
+}
+
+.role-badge.member {
+  background: rgba(46, 204, 113, 0.15);
+  color: #2ecc71;
+}
+
+.role-badge.security_admin {
+  background: rgba(155, 89, 182, 0.15);
+  color: #9b59b6;
+}
+
+.role-badge.security {
+  background: rgba(142, 68, 173, 0.15);
+  color: #8e44ad;
+}
+
+.btn-logout {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  padding: 6px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-logout:hover {
   color: var(--danger);
+  border-color: var(--danger);
 }
 
 .app-main {

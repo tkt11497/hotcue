@@ -1,27 +1,69 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { ref, watch } from "vue";
+import { useAuth } from "../composables/useAuth";
+import { db } from "../firebase";
+import { collection, getDocs, doc, getDoc } from "firebase/firestore";
+
+const { userProfile, canAccessAllRooms } = useAuth();
+let roomsLoaded = false;
 
 const props = defineProps<{
-  username: string;
-  room: string;
-  server: string;
   error: string | null;
   connecting: boolean;
 }>();
 
 const emit = defineEmits<{
-  "update:username": [value: string];
-  "update:room": [value: string];
-  "update:server": [value: string];
-  join: [];
+  join: [roomId: string];
 }>();
 
-const showAdvanced = ref(false);
+interface RoomEntry {
+  id: string;
+  name: string;
+}
 
-function onSubmit() {
-  if (props.username.trim() && props.room.trim()) {
-    emit("join");
+const rooms = ref<RoomEntry[]>([]);
+const loading = ref(true);
+
+watch(userProfile, async (profile) => {
+  if (!profile || roomsLoaded) return;
+  roomsLoaded = true;
+  try {
+    const roomsSnap = await getDocs(collection(db, "rooms"));
+    const allowed: RoomEntry[] = [];
+
+    for (const roomDoc of roomsSnap.docs) {
+      const data = roomDoc.data();
+      const entry: RoomEntry = { id: roomDoc.id, name: data.name || roomDoc.id };
+
+      if (canAccessAllRooms.value) {
+        allowed.push(entry);
+      } else if (profile.role === "room_admin") {
+        if (roomDoc.id === profile.assignedRoom || data.type === "holding") {
+          allowed.push(entry);
+        }
+      } else if (profile.role === "security_admin") {
+        if (data.type === "security" || data.type === "holding") {
+          allowed.push(entry);
+        }
+      } else if (profile.role === "security") {
+        if (data.type === "security") {
+          allowed.push(entry);
+        }
+      } else {
+        const snap = await getDoc(doc(db, "rooms", roomDoc.id, "allowed", profile.uid));
+        if (snap.exists()) allowed.push(entry);
+      }
+    }
+    rooms.value = allowed;
+  } catch (err) {
+    console.error("[lobby] failed to load rooms:", err);
+  } finally {
+    loading.value = false;
   }
+}, { immediate: true });
+
+function joinRoom(roomId: string) {
+  emit("join", roomId);
 }
 </script>
 
@@ -36,84 +78,41 @@ function onSubmit() {
           <line x1="8" y1="23" x2="16" y2="23" />
         </svg>
       </div>
-      <h2>Join Voice Room</h2>
-      <p class="subtitle">Connect with others on your local network</p>
+      <h2>Voice Rooms</h2>
+      <p class="subtitle">Welcome, {{ userProfile?.displayName }}</p>
 
-      <form @submit.prevent="onSubmit" class="lobby-form">
-        <div class="field">
-          <label for="username">Display Name</label>
-          <input
-            id="username"
-            type="text"
-            :value="username"
-            @input="emit('update:username', ($event.target as HTMLInputElement).value)"
-            placeholder="Enter your name"
-            autocomplete="off"
-            required
-          />
-        </div>
+      <div v-if="error" class="error-msg">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10" />
+          <line x1="15" y1="9" x2="9" y2="15" />
+          <line x1="9" y1="9" x2="15" y2="15" />
+        </svg>
+        {{ error }}
+      </div>
 
-        <div class="field">
-          <label for="room">Room</label>
-          <input
-            id="room"
-            type="text"
-            :value="room"
-            @input="emit('update:room', ($event.target as HTMLInputElement).value)"
-            placeholder="Room name"
-            autocomplete="off"
-            required
-          />
-        </div>
+      <div v-if="loading" class="loading-text">Loading rooms...</div>
 
+      <div v-else-if="rooms.length === 0" class="empty-text">
+        No rooms available. Ask an admin to add you to a room.
+      </div>
+
+      <div v-else class="room-list">
         <button
-          type="button"
-          class="toggle-advanced"
-          @click="showAdvanced = !showAdvanced"
+          v-for="room in rooms"
+          :key="room.id"
+          class="room-item"
+          :disabled="connecting"
+          @click="joinRoom(room.id)"
         >
-          {{ showAdvanced ? "Hide" : "Show" }} server settings
-          <svg
-            width="12"
-            height="12"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            :style="{ transform: showAdvanced ? 'rotate(180deg)' : '' }"
-          >
-            <polyline points="6 9 12 15 18 9" />
-          </svg>
-        </button>
-
-        <div v-if="showAdvanced" class="field">
-          <label for="server">Server URL</label>
-          <input
-            id="server"
-            type="text"
-            :value="server"
-            @input="emit('update:server', ($event.target as HTMLInputElement).value)"
-            placeholder="https://localhost:3001"
-          />
-        </div>
-
-        <div v-if="error" class="error-msg">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="12" cy="12" r="10" />
-            <line x1="15" y1="9" x2="9" y2="15" />
-            <line x1="9" y1="9" x2="15" y2="15" />
-          </svg>
-          {{ error }}
-        </div>
-
-        <button type="submit" class="btn-join" :disabled="connecting || !username.trim() || !room.trim()">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
-            <polyline points="10 17 15 12 10 7" />
-            <line x1="15" y1="12" x2="3" y2="12" />
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
           </svg>
-          {{ connecting ? "Connecting..." : "Join Room" }}
+          <span class="room-name">{{ room.name }}</span>
+          <svg class="join-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="9 18 15 12 9 6" />
+          </svg>
         </button>
-      </form>
+      </div>
     </div>
   </div>
 </template>
@@ -121,7 +120,7 @@ function onSubmit() {
 <style scoped>
 .lobby {
   width: 100%;
-  max-width: 420px;
+  max-width: 480px;
 }
 
 .lobby-card {
@@ -146,70 +145,7 @@ h2 {
 .subtitle {
   color: var(--text-muted);
   font-size: 0.9rem;
-  margin-bottom: 28px;
-}
-
-.lobby-form {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  text-align: left;
-}
-
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.field label {
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.field input {
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 10px 14px;
-  font-size: 0.95rem;
-  color: var(--text);
-  outline: none;
-  transition: border-color 0.2s;
-}
-
-.field input:focus {
-  border-color: var(--primary);
-}
-
-.field input::placeholder {
-  color: var(--text-muted);
-  opacity: 0.6;
-}
-
-.toggle-advanced {
-  background: none;
-  border: none;
-  color: var(--text-muted);
-  font-size: 0.8rem;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  align-self: center;
-  padding: 4px;
-  transition: color 0.2s;
-}
-
-.toggle-advanced:hover {
-  color: var(--text);
-}
-
-.toggle-advanced svg {
-  transition: transform 0.2s;
+  margin-bottom: 24px;
 }
 
 .error-msg {
@@ -222,31 +158,61 @@ h2 {
   padding: 10px 14px;
   font-size: 0.85rem;
   color: var(--danger);
+  margin-bottom: 16px;
+  text-align: left;
 }
 
-.btn-join {
+.loading-text,
+.empty-text {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  padding: 24px 0;
+}
+
+.room-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.room-item {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 8px;
-  background: var(--primary);
-  color: white;
-  border: none;
+  gap: 12px;
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  padding: 12px;
-  font-size: 1rem;
-  font-weight: 600;
+  padding: 14px 16px;
+  color: var(--text);
+  font-size: 0.95rem;
   cursor: pointer;
-  transition: background 0.2s;
-  margin-top: 4px;
+  transition: all 0.2s;
+  text-align: left;
 }
 
-.btn-join:hover:not(:disabled) {
-  background: var(--primary-hover);
+.room-item:hover:not(:disabled) {
+  border-color: var(--primary);
+  background: var(--surface-hover);
 }
 
-.btn-join:disabled {
+.room-item:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.room-name {
+  flex: 1;
+  font-weight: 600;
+}
+
+.join-arrow {
+  color: var(--text-muted);
+  transition: transform 0.2s;
+}
+
+.room-item:hover:not(:disabled) .join-arrow {
+  transform: translateX(3px);
+  color: var(--primary);
 }
 </style>
