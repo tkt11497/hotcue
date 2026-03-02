@@ -64,7 +64,7 @@ export function useSignaling() {
   }
 
   function getRawSocket(): Socket | null {
-    return socket.value;
+    return socket.value as Socket | null;
   }
 
   return {

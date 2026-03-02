@@ -2,27 +2,37 @@
 import { ref, watch, onMounted, onUnmounted } from "vue";
 import { useSignaling } from "./composables/useSignaling";
 import { useWebRTC } from "./composables/useWebRTC";
+import { useNativeBackground } from "./composables/useNativeBackground";
 import LobbyView from "./components/LobbyView.vue";
 import RoomView from "./components/RoomView.vue";
 
 const signaling = useSignaling();
 const webrtc = useWebRTC();
+const nativeBg = useNativeBackground();
 
 const pcStates = ref<Map<string, { connectionState: string; iceState: string }>>(new Map());
+const latencyInfo = ref<{ rtt: number | null; jitter: number | null; packetsLost: number }>({
+  rtt: null, jitter: null, packetsLost: 0,
+});
 let pcPollTimer: ReturnType<typeof setInterval> | null = null;
 
 function startPolling() {
-  pcPollTimer = setInterval(() => {
+  pcPollTimer = setInterval(async () => {
     pcStates.value = webrtc.getPeerConnectionStates();
-  }, 500);
+    latencyInfo.value = await webrtc.getLatencyStats();
+  }, 1000);
 }
 function stopPolling() {
   if (pcPollTimer) { clearInterval(pcPollTimer); pcPollTimer = null; }
+  latencyInfo.value = { rtt: null, jitter: null, packetsLost: 0 };
 }
 onUnmounted(stopPolling);
 
+const isNativeApp = !!(window as any).Capacitor?.isNativePlatform?.();
 const serverUrl = ref(
-  `https://${window.location.hostname}:3001`
+  isNativeApp
+    ? "http://192.168.200.167:3002"
+    : `https://${window.location.hostname}:3001`
 );
 const username = ref("");
 const targetRoom = ref("general");
@@ -56,12 +66,20 @@ async function handleJoin() {
     webrtc.attachSocketListeners(signaling.getRawSocket()!);
     signaling.joinRoom(targetRoom.value, username.value);
     startPolling();
+    nativeBg.start(targetRoom.value, {
+      onToggleMute: () => {
+        webrtc.toggleMute();
+        nativeBg.updateMicrophoneState(webrtc.isMuted.value);
+      },
+      onHangup: () => handleLeave(),
+    });
   } catch (err: any) {
     connectionError.value = err.message || "Failed to connect";
   }
 }
 
 function handleLeave() {
+  nativeBg.stop();
   stopPolling();
   webrtc.detachSocketListeners(signaling.getRawSocket()!);
   webrtc.closeAllPeers();
@@ -117,7 +135,8 @@ watch(
         :socket-id="signaling.myId.value"
         :mic-stream="webrtc.localStream.value"
         :peer-connection-states="pcStates"
-        @toggle-mute="webrtc.toggleMute()"
+        :latency="latencyInfo"
+        @toggle-mute="webrtc.toggleMute(); nativeBg.updateMicrophoneState(webrtc.isMuted.value)"
         @leave="handleLeave"
       />
     </main>

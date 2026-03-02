@@ -7,7 +7,7 @@ import DebugPanel from "./DebugPanel.vue";
 
 const props = defineProps<{
   roomId: string;
-  users: RoomUser[];
+  users: readonly RoomUser[];
   myId: string;
   peerStates: Map<string, PeerState>;
   isMuted: boolean;
@@ -15,6 +15,7 @@ const props = defineProps<{
   socketId: string | null;
   micStream: MediaStream | null;
   peerConnectionStates: Map<string, { connectionState: string; iceState: string }>;
+  latency: { rtt: number | null; jitter: number | null; packetsLost: number };
 }>();
 
 const emit = defineEmits<{
@@ -24,6 +25,14 @@ const emit = defineEmits<{
 
 const otherUsers = computed(() => props.users.filter((u) => u.id !== props.myId));
 const myUser = computed(() => props.users.find((u) => u.id === props.myId));
+
+const rttClass = computed(() => {
+  const rtt = props.latency.rtt;
+  if (rtt === null) return "neutral";
+  if (rtt < 50) return "good";
+  if (rtt < 150) return "ok";
+  return "bad";
+});
 </script>
 
 <template>
@@ -37,6 +46,15 @@ const myUser = computed(() => props.users.find((u) => u.id === props.myId));
           {{ roomId }}
         </h2>
         <span class="user-count">{{ users.length }} {{ users.length === 1 ? "user" : "users" }}</span>
+      </div>
+      <div class="latency-indicator" :class="rttClass" v-if="otherUsers.length > 0">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+        </svg>
+        <span v-if="latency.rtt !== null">{{ latency.rtt }}ms</span>
+        <span v-else>--</span>
+        <span v-if="latency.jitter !== null" class="jitter">j:{{ latency.jitter }}ms</span>
+        <span v-if="latency.packetsLost > 0" class="lost">lost:{{ latency.packetsLost }}</span>
       </div>
       <button class="btn-leave" @click="emit('leave')">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -151,6 +169,8 @@ const myUser = computed(() => props.users.find((u) => u.id === props.myId));
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -169,6 +189,48 @@ const myUser = computed(() => props.users.find((u) => u.id === props.myId));
   font-size: 0.8rem;
   color: var(--text-muted);
   margin-left: 28px;
+}
+
+.latency-indicator {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+}
+
+.latency-indicator.good {
+  color: #2ecc71;
+  background: rgba(46, 204, 113, 0.1);
+}
+
+.latency-indicator.ok {
+  color: #f39c12;
+  background: rgba(243, 156, 18, 0.1);
+}
+
+.latency-indicator.bad {
+  color: #e74c3c;
+  background: rgba(231, 76, 60, 0.1);
+}
+
+.latency-indicator.neutral {
+  color: var(--text-muted);
+  background: var(--surface);
+}
+
+.latency-indicator .jitter {
+  opacity: 0.7;
+  font-weight: 500;
+}
+
+.latency-indicator .lost {
+  color: #e74c3c;
+  font-weight: 500;
 }
 
 .btn-leave {

@@ -5,8 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
-    "preview": "vite preview"
+    "build": "vue-tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "cap:build": "vite build && npx cap sync",
+    "cap:open": "npx cap open android",
+    "cap:run": "npx cap run android"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^6.0.4",
@@ -15,6 +18,12 @@
     "vue-tsc": "^3.2.5"
   },
   "dependencies": {
+    "@anuradev/capacitor-background-mode": "^7.2.1",
+    "@capacitor/android": "^8.1.0",
+    "@capacitor/cli": "^8.1.0",
+    "@capacitor/core": "^8.1.0",
+    "@capacitor/ios": "^8.1.0",
+    "@capawesome-team/capacitor-android-foreground-service": "^8.0.1",
     "socket.io-client": "^4.8.3",
     "vue": "^3.5.29"
   }

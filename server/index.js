@@ -1,24 +1,31 @@
 import { readFileSync } from "fs";
-import { createServer } from "https";
+import { createServer as createHttpsServer } from "https";
+import { createServer as createHttpServer } from "http";
 import { Server } from "socket.io";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-const PORT = process.env.PORT || 3001;
+const HTTPS_PORT = process.env.PORT || 3001;
+const HTTP_PORT = process.env.HTTP_PORT || 3002;
 
-const httpsServer = createServer({
+const httpsServer = createHttpsServer({
   key: readFileSync(join(__dirname, "certs", "key.pem")),
   cert: readFileSync(join(__dirname, "certs", "cert.pem")),
 });
 
-const io = new Server(httpsServer, {
+const httpServer = createHttpServer();
+
+const io = new Server({
   cors: {
     origin: "*",
     methods: ["GET", "POST"],
   },
 });
+
+io.attach(httpsServer);
+io.attach(httpServer);
 
 const rooms = new Map();
 
@@ -110,8 +117,12 @@ io.on("connection", (socket) => {
   }
 });
 
-httpsServer.listen(PORT, "0.0.0.0", () => {
+httpsServer.listen(HTTPS_PORT, "0.0.0.0", () => {
   console.log(`\n🎙️  GCN Voice signaling server running`);
-  console.log(`   https://localhost:${PORT}`);
+  console.log(`   HTTPS: https://localhost:${HTTPS_PORT} (browsers)`);
+});
+
+httpServer.listen(HTTP_PORT, "0.0.0.0", () => {
+  console.log(`   HTTP:  http://localhost:${HTTP_PORT}  (native apps)`);
   console.log(`   Listening on all interfaces (LAN accessible)\n`);
 });

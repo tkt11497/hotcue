@@ -285,6 +285,45 @@ export function useWebRTC() {
     return result;
   }
 
+  async function getLatencyStats(): Promise<{
+    rtt: number | null;
+    jitter: number | null;
+    packetsLost: number;
+    packetsSent: number;
+    packetsReceived: number;
+  }> {
+    let rtt: number | null = null;
+    let jitter: number | null = null;
+    let packetsLost = 0;
+    let packetsSent = 0;
+    let packetsReceived = 0;
+
+    for (const pc of peerConnections.values()) {
+      try {
+        const stats = await pc.getStats();
+        stats.forEach((report) => {
+          if (report.type === "candidate-pair" && report.state === "succeeded") {
+            if (report.currentRoundTripTime != null) {
+              rtt = Math.round(report.currentRoundTripTime * 1000);
+            }
+          }
+          if (report.type === "inbound-rtp" && report.kind === "audio") {
+            if (report.jitter != null) {
+              jitter = Math.round(report.jitter * 1000);
+            }
+            packetsLost += report.packetsLost ?? 0;
+            packetsReceived += report.packetsReceived ?? 0;
+          }
+          if (report.type === "outbound-rtp" && report.kind === "audio") {
+            packetsSent += report.packetsSent ?? 0;
+          }
+        });
+      } catch { /* pc may be closing */ }
+    }
+
+    return { rtt, jitter, packetsLost, packetsSent, packetsReceived };
+  }
+
   return {
     localStream,
     peerStates,
@@ -298,5 +337,6 @@ export function useWebRTC() {
     closeAllPeers,
     removePeer,
     getPeerConnectionStates,
+    getLatencyStats,
   };
 }
