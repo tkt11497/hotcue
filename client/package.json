@@ -20,7 +20,6 @@
     "vue-tsc": "^3.2.5"
   },
   "dependencies": {
-    "@anuradev/capacitor-background-mode": "^7.2.1",
     "@capacitor/android": "^8.1.0",
     "@capacitor/cli": "^8.1.0",
     "@capacitor/core": "^8.1.0",

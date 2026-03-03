@@ -8,10 +8,58 @@ export interface PeerState {
 
 export type SendSignalFn = (to: string, type: string, payload: any) => void;
 
-const ICE_SERVERS: RTCIceServer[] = [
+const CLOUDFLARE_TURN_KEY_ID = "f722e547eeec974871f4e1d371fad2b2";
+const CLOUDFLARE_TURN_API_TOKEN = "303e3cbb923f4a731454838c87f961299a1a766ce915c96fad0128c97d5afad9";
+const TURN_CREDENTIAL_TTL = 86400;
+
+const STUN_SERVERS: RTCIceServer[] = [
   { urls: "stun:stun.l.google.com:19302" },
   { urls: "stun:stun1.l.google.com:19302" },
 ];
+
+let cachedTurnServers: RTCIceServer[] = [];
+let turnCacheExpiry = 0;
+
+async function fetchTurnCredentials(): Promise<RTCIceServer[]> {
+  if (cachedTurnServers.length && Date.now() < turnCacheExpiry) {
+    return cachedTurnServers;
+  }
+
+  try {
+    const res = await fetch(
+      `https://rtc.live.cloudflare.com/v1/turn/keys/${CLOUDFLARE_TURN_KEY_ID}/credentials/generate`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${CLOUDFLARE_TURN_API_TOKEN}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ ttl: TURN_CREDENTIAL_TTL }),
+      }
+    );
+
+    if (!res.ok) throw new Error(`TURN credential fetch failed: ${res.status}`);
+
+    const data = await res.json();
+    const iceServers = data.iceServers;
+
+    cachedTurnServers = [
+      { urls: iceServers.urls, username: iceServers.username, credential: iceServers.credential },
+    ];
+    turnCacheExpiry = Date.now() + (TURN_CREDENTIAL_TTL - 300) * 1000;
+
+    console.log("[rtc] TURN credentials fetched, expires in", TURN_CREDENTIAL_TTL - 300, "s");
+    return cachedTurnServers;
+  } catch (err) {
+    console.warn("[rtc] failed to fetch TURN credentials, using STUN only:", err);
+    return [];
+  }
+}
+
+async function getIceServers(): Promise<RTCIceServer[]> {
+  const turn = await fetchTurnCredentials();
+  return [...STUN_SERVERS, ...turn];
+}
 
 export function useWebRTC() {
   const localStream = ref<MediaStream | null>(null);
@@ -62,7 +110,7 @@ export function useWebRTC() {
     sendSignalFn = null;
   }
 
-  function createPeerConnection(peerId: string): RTCPeerConnection {
+  async function createPeerConnection(peerId: string): Promise<RTCPeerConnection> {
     const existing = peerConnections.get(peerId);
     if (existing) {
       console.log(`[rtc] closing existing PC for ${peerId}`);
@@ -70,7 +118,8 @@ export function useWebRTC() {
       peerConnections.delete(peerId);
     }
 
-    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+    const iceServers = await getIceServers();
+    const pc = new RTCPeerConnection({ iceServers });
     peerConnections.set(peerId, pc);
     pendingCandidates.set(peerId, []);
 
@@ -152,7 +201,7 @@ export function useWebRTC() {
 
   async function createOffer(peerId: string) {
     console.log(`[rtc] === createOffer for ${peerId} ===`);
-    const pc = createPeerConnection(peerId);
+    const pc = await createPeerConnection(peerId);
 
     try {
       const offer = await pc.createOffer();
@@ -172,7 +221,7 @@ export function useWebRTC() {
 
   async function handleOffer(peerId: string, offer: RTCSessionDescriptionInit) {
     console.log(`[rtc] === handleOffer from ${peerId}, sdp length: ${offer.sdp?.length} ===`);
-    const pc = createPeerConnection(peerId);
+    const pc = await createPeerConnection(peerId);
 
     try {
       await pc.setRemoteDescription(offer);

@@ -147,9 +147,20 @@ export function useSignaling() {
     const knownPeers = new Set<string>();
 
     unsubUsers = onSnapshot(usersCol, (snapshot) => {
+      const now = Date.now();
       const currentUsers: RoomUser[] = [];
       snapshot.forEach((d) => {
-        currentUsers.push({ id: d.id, username: d.data().username });
+        const data = d.data();
+        const lastSeen = data.lastSeen as Timestamp | null;
+        if (lastSeen && d.id !== uid) {
+          const age = now - lastSeen.toMillis();
+          if (age > STALE_THRESHOLD_MS) {
+            deleteDoc(d.ref).catch(() => {});
+            return;
+          }
+        }
+        if (!data.username) return;
+        currentUsers.push({ id: d.id, username: data.username });
       });
       users.value = currentUsers;
 

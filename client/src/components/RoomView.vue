@@ -95,10 +95,10 @@ const rttClass = computed(() => {
         class="participant"
       >
         <div class="avatar">
-          <span>{{ user.username[0].toUpperCase() }}</span>
+          <span>{{ (user.username || "?")[0].toUpperCase() }}</span>
           <div class="speaking-ring"></div>
         </div>
-        <span class="name">{{ user.username }}</span>
+        <span class="name">{{ user.username || "Unknown" }}</span>
         <div class="status-icon active-icon">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />

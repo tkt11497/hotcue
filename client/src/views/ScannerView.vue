@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, nextTick } from "vue";
+import { ref, onMounted, onUnmounted, nextTick, computed } from "vue";
+import { useAuth } from "../composables/useAuth";
 import { Html5Qrcode } from "html5-qrcode";
 import { db } from "../firebase";
 import { doc, getDoc, collection, getDocs } from "firebase/firestore";
@@ -13,6 +14,7 @@ interface ScannedUser {
   department?: string;
   company?: string;
   accessAreas?: string[];
+  accessAreaIds?: string[];
   photoURL?: string;
 }
 
@@ -21,6 +23,17 @@ const scannedUser = ref<ScannedUser | null>(null);
 const qrDataUrl = ref("");
 const error = ref("");
 const loadingUser = ref(false);
+
+const { userProfile } = useAuth();
+
+const securityHasNoAreas = computed(() => !userProfile.value?.accessAreas?.length);
+
+const accessDenied = computed(() => {
+  if (!scannedUser.value || securityHasNoAreas.value) return false;
+  const securityAreas = new Set(userProfile.value!.accessAreas!);
+  const userAreas = scannedUser.value.accessAreaIds ?? [];
+  return !userAreas.some((id) => securityAreas.has(id));
+});
 
 let scanner: Html5Qrcode | null = null;
 
@@ -103,6 +116,7 @@ async function lookupUser(uid: string) {
       department: departmentName,
       company: data.company,
       accessAreas: areaNames,
+      accessAreaIds: data.accessAreas ?? [],
       photoURL: data.photoURL,
     };
 
@@ -130,6 +144,19 @@ function scanAgain() {
     <h2>QR Scanner</h2>
     <p class="desc">Scan a member's QR code to view their info and access areas.</p>
 
+    <div v-if="securityHasNoAreas" class="no-area-card">
+      <div class="no-area-icon">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 9v4" />
+          <path d="M10.363 3.591l-8.106 13.534A1.914 1.914 0 0 0 3.891 20h16.218a1.914 1.914 0 0 0 1.634-2.875L13.637 3.59a1.914 1.914 0 0 0-3.274 0z" />
+          <path d="M12 17h.01" />
+        </svg>
+      </div>
+      <h3 class="no-area-title">No Area Assigned</h3>
+      <p class="no-area-msg">You are not assigned to any access area. Please ask an admin to assign you to an area before scanning.</p>
+    </div>
+
+    <template v-else>
     <div v-if="scanning" class="scanner-container">
       <div id="qr-reader"></div>
     </div>
@@ -140,6 +167,28 @@ function scanAgain() {
     </div>
 
     <div v-if="loadingUser" class="loading">Loading member info...</div>
+
+    <div v-if="scannedUser && accessDenied" class="denied-card">
+      <div class="denied-icon">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10" />
+          <line x1="4.93" y1="4.93" x2="19.07" y2="19.07" />
+        </svg>
+      </div>
+      <h3 class="denied-title">Not Allowed to Enter</h3>
+      <p class="denied-msg">This member does not have access to your assigned area.</p>
+    </div>
+
+    <div v-if="scannedUser && !accessDenied" class="allowed-card">
+      <div class="allowed-icon">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+          <polyline points="22 4 12 14.01 9 11.01" />
+        </svg>
+      </div>
+      <h3 class="allowed-title">Allowed to Enter</h3>
+      <p class="allowed-msg">This member has access to your assigned area.</p>
+    </div>
 
     <div v-if="scannedUser" class="user-card">
       <div class="card-header-row">
@@ -190,6 +239,7 @@ function scanAgain() {
 
       <button class="btn-scan" @click="scanAgain">Scan Another</button>
     </div>
+    </template>
   </div>
 </template>
 
@@ -240,6 +290,87 @@ h2 {
   text-align: center;
   color: var(--text-muted);
   padding: 24px;
+}
+
+.no-area-card {
+  background: rgba(243, 156, 18, 0.08);
+  border: 2px solid rgba(243, 156, 18, 0.4);
+  border-radius: var(--radius);
+  padding: 40px 24px;
+  text-align: center;
+}
+
+.no-area-icon {
+  color: #f39c12;
+  margin-bottom: 12px;
+}
+
+.no-area-title {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: #f39c12;
+  margin: 0 0 8px 0;
+}
+
+.no-area-msg {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  margin: 0;
+  line-height: 1.5;
+}
+
+.allowed-card {
+  background: rgba(46, 204, 113, 0.08);
+  border: 2px solid rgba(46, 204, 113, 0.4);
+  border-radius: var(--radius);
+  padding: 28px 24px;
+  text-align: center;
+  margin-bottom: 16px;
+}
+
+.allowed-icon {
+  color: #2ecc71;
+  margin-bottom: 12px;
+}
+
+.allowed-title {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: #2ecc71;
+  margin: 0 0 6px 0;
+}
+
+.allowed-msg {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  margin: 0;
+}
+
+.denied-card {
+  background: rgba(231, 76, 60, 0.08);
+  border: 2px solid rgba(231, 76, 60, 0.4);
+  border-radius: var(--radius);
+  padding: 28px 24px;
+  text-align: center;
+  margin-bottom: 16px;
+}
+
+.denied-icon {
+  color: #e74c3c;
+  margin-bottom: 12px;
+}
+
+.denied-title {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: #e74c3c;
+  margin: 0 0 6px 0;
+}
+
+.denied-msg {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  margin: 0;
 }
 
 .user-card {

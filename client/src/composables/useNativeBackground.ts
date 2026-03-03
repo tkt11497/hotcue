@@ -4,17 +4,10 @@ import { useKeepAlive } from "./useKeepAlive";
 
 const active = ref(false);
 
-let bgModePlugin: any = null;
 let fgServicePlugin: any = null;
 
 async function loadNativePlugins() {
   if (!Capacitor.isNativePlatform()) return;
-  try {
-    const bg = await import("@anuradev/capacitor-background-mode");
-    bgModePlugin = bg.BackgroundMode;
-  } catch (err) {
-    console.warn("[native-bg] background-mode plugin not available:", err);
-  }
   try {
     const fg = await import("@capawesome-team/capacitor-android-foreground-service");
     fgServicePlugin = fg.ForegroundService;
@@ -28,59 +21,20 @@ export function useNativeBackground() {
   const isNative = Capacitor.isNativePlatform();
 
   async function requestPermissions() {
-    if (!isNative) return;
+    if (!isNative || !fgServicePlugin) return;
 
-    if (bgModePlugin) {
-      try {
-        const notifPerm = await bgModePlugin.checkNotificationsPermission();
-        if (notifPerm.notifications !== "granted") {
-          await bgModePlugin.requestNotificationsPermission();
-        }
-        const micPerm = await bgModePlugin.checkMicrophonePermission();
-        if (micPerm.microphone !== "granted") {
-          await bgModePlugin.requestMicrophonePermission();
-        }
-      } catch (err) {
-        console.warn("[native-bg] permission request failed:", err);
+    try {
+      const perm = await fgServicePlugin.checkPermissions();
+      if (perm.display !== "granted") {
+        await fgServicePlugin.requestPermissions();
       }
-    }
-
-    if (fgServicePlugin) {
-      try {
-        const perm = await fgServicePlugin.checkPermissions();
-        if (perm.display !== "granted") {
-          await fgServicePlugin.requestPermissions();
-        }
-      } catch (err) {
-        console.warn("[native-bg] fg-service permission failed:", err);
-      }
+    } catch (err) {
+      console.warn("[native-bg] fg-service permission failed:", err);
     }
   }
 
   async function startNativeBackground(roomId: string) {
     await requestPermissions();
-
-    if (bgModePlugin) {
-      try {
-        await bgModePlugin.enable({
-          title: "GCN Voice",
-          text: `In call - Room: ${roomId}`,
-          silent: true,
-          resume: true,
-          hidden: false,
-          disableWebViewOptimization: true,
-        });
-        await bgModePlugin.disableWebViewOptimizations();
-
-        try {
-          await bgModePlugin.requestDisableBatteryOptimizations();
-        } catch { /* user may decline, that's ok */ }
-
-        console.log("[native-bg] background mode enabled");
-      } catch (err) {
-        console.error("[native-bg] background mode enable failed:", err);
-      }
-    }
 
     if (fgServicePlugin) {
       try {
@@ -100,15 +54,6 @@ export function useNativeBackground() {
   }
 
   async function stopNativeBackground() {
-    if (bgModePlugin) {
-      try {
-        await bgModePlugin.disable();
-        console.log("[native-bg] background mode disabled");
-      } catch (err) {
-        console.warn("[native-bg] background mode disable failed:", err);
-      }
-    }
-
     if (fgServicePlugin) {
       try {
         await fgServicePlugin.stopForegroundService();
