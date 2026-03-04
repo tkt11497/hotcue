@@ -7,6 +7,7 @@ export interface PeerState {
 }
 
 export type SendSignalFn = (to: string, type: string, payload: any) => void;
+export type PeerUnreachableFn = (peerId: string) => void;
 
 const CLOUDFLARE_TURN_KEY_ID = "f722e547eeec974871f4e1d371fad2b2";
 const CLOUDFLARE_TURN_API_TOKEN = "303e3cbb923f4a731454838c87f961299a1a766ce915c96fad0128c97d5afad9";
@@ -67,9 +68,15 @@ export function useWebRTC() {
   const isMuted = ref(false);
   const audioError = ref<string | null>(null);
 
+  const OFFER_ANSWER_TIMEOUT_MS = 15_000;
+  const DISCONNECT_GRACE_MS = 10_000;
+
   const peerConnections = new Map<string, RTCPeerConnection>();
   const pendingCandidates = new Map<string, RTCIceCandidateInit[]>();
+  const offerTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
+  const disconnectTimers = new Map<string, ReturnType<typeof setTimeout>>();
   let sendSignalFn: SendSignalFn | null = null;
+  let peerUnreachableFn: PeerUnreachableFn | null = null;
 
   async function startMicrophone() {
     try {
@@ -102,12 +109,18 @@ export function useWebRTC() {
     });
   }
 
-  function setup(sendSignal: SendSignalFn) {
+  function setup(sendSignal: SendSignalFn, onPeerUnreachable?: PeerUnreachableFn) {
     sendSignalFn = sendSignal;
+    peerUnreachableFn = onPeerUnreachable ?? null;
   }
 
   function teardown() {
     sendSignalFn = null;
+    peerUnreachableFn = null;
+    offerTimeouts.forEach((t) => clearTimeout(t));
+    offerTimeouts.clear();
+    disconnectTimers.forEach((t) => clearTimeout(t));
+    disconnectTimers.clear();
   }
 
   async function createPeerConnection(peerId: string): Promise<RTCPeerConnection> {
@@ -163,8 +176,26 @@ export function useWebRTC() {
       if (state) {
         peerStates.set(peerId, { ...state, connectionState: pc.connectionState });
       }
-      if (pc.connectionState === "failed") {
-        console.error(`[rtc] connection FAILED for ${peerId}`);
+
+      if (pc.connectionState === "connected") {
+        clearOfferTimeout(peerId);
+        clearDisconnectTimer(peerId);
+      } else if (pc.connectionState === "disconnected") {
+        clearDisconnectTimer(peerId);
+        disconnectTimers.set(
+          peerId,
+          setTimeout(() => {
+            if (pc.connectionState !== "connected") {
+              console.warn(`[rtc] ${peerId} unreachable after disconnect grace period`);
+              peerUnreachableFn?.(peerId);
+            }
+          }, DISCONNECT_GRACE_MS)
+        );
+      } else if (pc.connectionState === "failed") {
+        clearOfferTimeout(peerId);
+        clearDisconnectTimer(peerId);
+        console.error(`[rtc] connection FAILED for ${peerId}, marking unreachable`);
+        peerUnreachableFn?.(peerId);
       }
     };
 
@@ -181,6 +212,16 @@ export function useWebRTC() {
     };
 
     return pc;
+  }
+
+  function clearOfferTimeout(peerId: string) {
+    const t = offerTimeouts.get(peerId);
+    if (t) { clearTimeout(t); offerTimeouts.delete(peerId); }
+  }
+
+  function clearDisconnectTimer(peerId: string) {
+    const t = disconnectTimers.get(peerId);
+    if (t) { clearTimeout(t); disconnectTimers.delete(peerId); }
   }
 
   async function drainPendingCandidates(peerId: string) {
@@ -214,6 +255,18 @@ export function useWebRTC() {
         sdp: pc.localDescription!.sdp,
       });
       console.log(`[rtc] offer sent to ${peerId}`);
+
+      clearOfferTimeout(peerId);
+      offerTimeouts.set(
+        peerId,
+        setTimeout(() => {
+          const currentPc = peerConnections.get(peerId);
+          if (currentPc && currentPc.connectionState !== "connected") {
+            console.warn(`[rtc] no answer from ${peerId} within ${OFFER_ANSWER_TIMEOUT_MS}ms, marking unreachable`);
+            peerUnreachableFn?.(peerId);
+          }
+        }, OFFER_ANSWER_TIMEOUT_MS)
+      );
     } catch (err) {
       console.error(`[rtc] createOffer failed:`, err);
     }
@@ -246,6 +299,8 @@ export function useWebRTC() {
 
   async function handleAnswer(peerId: string, answer: RTCSessionDescriptionInit) {
     console.log(`[rtc] === handleAnswer from ${peerId}, sdp length: ${answer.sdp?.length} ===`);
+    clearOfferTimeout(peerId);
+
     const pc = peerConnections.get(peerId);
     if (!pc) {
       console.error(`[rtc] no PC found for ${peerId} when handling answer`);
@@ -280,6 +335,8 @@ export function useWebRTC() {
   }
 
   function removePeer(peerId: string) {
+    clearOfferTimeout(peerId);
+    clearDisconnectTimer(peerId);
     const pc = peerConnections.get(peerId);
     if (pc) {
       pc.close();
@@ -290,6 +347,10 @@ export function useWebRTC() {
   }
 
   function closeAllPeers() {
+    offerTimeouts.forEach((t) => clearTimeout(t));
+    offerTimeouts.clear();
+    disconnectTimers.forEach((t) => clearTimeout(t));
+    disconnectTimers.clear();
     peerConnections.forEach((pc) => pc.close());
     peerConnections.clear();
     pendingCandidates.clear();

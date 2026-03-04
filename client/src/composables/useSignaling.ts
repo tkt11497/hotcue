@@ -28,7 +28,8 @@ export interface SignalCallbacks {
 }
 
 const HEARTBEAT_INTERVAL_MS = 10_000;
-const STALE_THRESHOLD_MS = 50_000;
+const STALE_THRESHOLD_MS = 35_000;
+const STALE_SWEEP_INTERVAL_MS = 30_000;
 
 const connected = ref(false);
 const roomId = ref<string | null>(null);
@@ -41,7 +42,9 @@ export function useSignaling() {
   let callbacks: SignalCallbacks | null = null;
   let currentRoomId: string | null = null;
   let beforeUnloadHandler: (() => void) | null = null;
+  let pagehideHandler: ((e: PageTransitionEvent) => void) | null = null;
   let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+  let staleSweepTimer: ReturnType<typeof setInterval> | null = null;
 
   function startHeartbeat(usersCol: ReturnType<typeof collection>, uid: string) {
     heartbeatTimer = setInterval(() => {
@@ -192,6 +195,17 @@ export function useSignaling() {
       deleteDoc(doc(usersCol, uid)).catch(() => {});
     };
     window.addEventListener("beforeunload", beforeUnloadHandler);
+
+    pagehideHandler = (e: PageTransitionEvent) => {
+      if (!e.persisted) {
+        deleteDoc(doc(usersCol, uid)).catch(() => {});
+      }
+    };
+    window.addEventListener("pagehide", pagehideHandler);
+
+    staleSweepTimer = setInterval(() => {
+      cleanupStaleUsers(usersCol, uid);
+    }, STALE_SWEEP_INTERVAL_MS);
   }
 
   async function sendSignal(to: string, type: string, payload: any) {
@@ -210,6 +224,14 @@ export function useSignaling() {
     if (beforeUnloadHandler) {
       window.removeEventListener("beforeunload", beforeUnloadHandler);
       beforeUnloadHandler = null;
+    }
+    if (pagehideHandler) {
+      window.removeEventListener("pagehide", pagehideHandler);
+      pagehideHandler = null;
+    }
+    if (staleSweepTimer) {
+      clearInterval(staleSweepTimer);
+      staleSweepTimer = null;
     }
 
     stopHeartbeat();
@@ -232,6 +254,13 @@ export function useSignaling() {
     callbacks = null;
   }
 
+  async function removePeerDoc(peerId: string) {
+    if (!currentRoomId) return;
+    const usersCol = collection(db, `rooms/${currentRoomId}/users`);
+    console.log(`[signaling] removing ghost peer doc: ${peerId}`);
+    await deleteDoc(doc(usersCol, peerId)).catch(() => {});
+  }
+
   return {
     connected: readonly(connected),
     roomId: readonly(roomId),
@@ -240,5 +269,6 @@ export function useSignaling() {
     joinRoom,
     leaveRoom,
     sendSignal,
+    removePeerDoc,
   };
 }

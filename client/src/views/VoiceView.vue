@@ -48,9 +48,14 @@ async function handleJoin(roomId: string) {
 
     await webrtc.startMicrophone();
 
-    webrtc.setup((to, type, payload) => {
-      signaling.sendSignal(to, type, payload);
-    });
+    webrtc.setup(
+      (to, type, payload) => signaling.sendSignal(to, type, payload),
+      (peerId) => {
+        console.log(`[voice] peer unreachable: ${peerId}, cleaning up ghost`);
+        webrtc.removePeer(peerId);
+        signaling.removePeerDoc(peerId);
+      }
+    );
 
     await signaling.joinRoom(roomId, userProfile.value.displayName, {
       onPeerJoined: (peerId) => {
