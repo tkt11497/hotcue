@@ -88,6 +88,7 @@ export function useWebRTC() {
         },
         video: false,
       });
+      isMuted.value = false;
       audioError.value = null;
       console.log("[mic] started, tracks:", localStream.value.getAudioTracks().length);
     } catch (err: any) {

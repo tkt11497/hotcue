@@ -4,6 +4,7 @@ import { useAuth } from "../composables/useAuth";
 import { useSignaling } from "../composables/useSignaling";
 import { useWebRTC } from "../composables/useWebRTC";
 import { useNativeBackground } from "../composables/useNativeBackground";
+import { useWidget } from "../composables/useWidget";
 import { db } from "../firebase";
 import { doc, getDoc } from "firebase/firestore";
 import LobbyView from "../components/LobbyView.vue";
@@ -13,6 +14,7 @@ const { userProfile } = useAuth();
 const signaling = useSignaling();
 const webrtc = useWebRTC();
 const nativeBg = useNativeBackground();
+const widget = useWidget();
 
 const pcStates = ref<Map<string, { connectionState: string; iceState: string }>>(new Map());
 const latencyInfo = ref<{ rtt: number | null; jitter: number | null; packetsLost: number }>({
@@ -36,6 +38,55 @@ const connectionError = ref<string | null>(null);
 const joining = ref(false);
 const currentRoomName = ref("");
 
+let widgetListenerCleanup: { remove: () => void } | undefined;
+
+widget.onWidgetAction((action) => {
+  if (action === "toggleMute" && signaling.roomId.value) {
+    handleToggleMute();
+  } else if (action === "hangup" && signaling.roomId.value) {
+    handleLeave();
+  }
+}).then((handle) => {
+  widgetListenerCleanup = handle;
+});
+
+function handleToggleMute() {
+  webrtc.toggleMute();
+  const muted = webrtc.isMuted.value;
+  nativeBg.updateMicrophoneState(muted);
+  signaling.updateMuteState(muted);
+  syncWidget();
+}
+
+function syncWidget() {
+  if (!signaling.roomId.value) return;
+  widget.updateCallState(
+    currentRoomName.value || signaling.roomId.value,
+    webrtc.isMuted.value,
+    webrtc.peerStates.size
+  );
+}
+
+let widgetSyncTimer: ReturnType<typeof setInterval> | null = null;
+
+function startWidgetSync() {
+  syncWidget();
+  widgetSyncTimer = setInterval(syncWidget, 3000);
+}
+
+function stopWidgetSync() {
+  if (widgetSyncTimer) {
+    clearInterval(widgetSyncTimer);
+    widgetSyncTimer = null;
+  }
+  widget.clearCallState();
+}
+
+onUnmounted(() => {
+  widgetListenerCleanup?.remove();
+  stopWidgetSync();
+});
+
 async function handleJoin(roomId: string) {
   if (!userProfile.value || !roomId.trim()) return;
 
@@ -48,18 +99,37 @@ async function handleJoin(roomId: string) {
 
     await webrtc.startMicrophone();
 
+    let hadPeers = false;
+    let allPeersLostTimer: ReturnType<typeof setTimeout> | null = null;
+
     webrtc.setup(
       (to, type, payload) => signaling.sendSignal(to, type, payload),
       (peerId) => {
         console.log(`[voice] peer unreachable: ${peerId}, cleaning up ghost`);
         webrtc.removePeer(peerId);
         signaling.removePeerDoc(peerId);
+
+        if (hadPeers && webrtc.peerStates.size === 0) {
+          if (allPeersLostTimer) clearTimeout(allPeersLostTimer);
+          allPeersLostTimer = setTimeout(() => {
+            allPeersLostTimer = null;
+            if (webrtc.peerStates.size > 0) return;
+            const othersInRoom = signaling.users.value.filter(
+              (u) => u.id !== signaling.myId.value
+            ).length;
+            if (othersInRoom > 0) {
+              console.warn("[voice] all RTC peers lost but room still has users — auto-leaving");
+              handleLeave();
+            }
+          }, 5000);
+        }
       }
     );
 
     await signaling.joinRoom(roomId, userProfile.value.displayName, {
       onPeerJoined: (peerId) => {
         console.log(`[voice] peer joined: ${peerId}`);
+        hadPeers = true;
         webrtc.createOffer(peerId);
       },
       onPeerLeft: (peerId) => {
@@ -75,11 +145,9 @@ async function handleJoin(roomId: string) {
     });
 
     startPolling();
+    startWidgetSync();
     nativeBg.start(roomId, {
-      onToggleMute: () => {
-        webrtc.toggleMute();
-        nativeBg.updateMicrophoneState(webrtc.isMuted.value);
-      },
+      onToggleMute: () => handleToggleMute(),
       onHangup: () => handleLeave(),
     });
   } catch (err: any) {
@@ -90,6 +158,7 @@ async function handleJoin(roomId: string) {
 }
 
 async function handleLeave() {
+  stopWidgetSync();
   nativeBg.stop();
   stopPolling();
   webrtc.teardown();
@@ -119,7 +188,7 @@ async function handleLeave() {
     :mic-stream="webrtc.localStream.value"
     :peer-connection-states="pcStates"
     :latency="latencyInfo"
-    @toggle-mute="webrtc.toggleMute(); nativeBg.updateMicrophoneState(webrtc.isMuted.value)"
+    @toggle-mute="handleToggleMute()"
     @leave="handleLeave"
   />
 </template>

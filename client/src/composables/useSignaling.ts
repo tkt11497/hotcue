@@ -19,6 +19,7 @@ import {
 export interface RoomUser {
   id: string;
   username: string;
+  isMuted: boolean;
 }
 
 export interface SignalCallbacks {
@@ -45,10 +46,15 @@ export function useSignaling() {
   let pagehideHandler: ((e: PageTransitionEvent) => void) | null = null;
   let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   let staleSweepTimer: ReturnType<typeof setInterval> | null = null;
+  let unsubSelf: Unsubscribe | null = null;
 
-  function startHeartbeat(usersCol: ReturnType<typeof collection>, uid: string) {
+  function startHeartbeat(usersCol: ReturnType<typeof collection>, uid: string, username: string) {
     heartbeatTimer = setInterval(() => {
-      setDoc(doc(usersCol, uid), { lastSeen: serverTimestamp() }, { merge: true }).catch(() => {});
+      setDoc(doc(usersCol, uid), {
+        username,
+        userId: uid,
+        lastSeen: serverTimestamp(),
+      }, { merge: true }).catch(() => {});
     }, HEARTBEAT_INTERVAL_MS);
   }
 
@@ -140,11 +146,24 @@ export function useSignaling() {
     await setDoc(doc(usersCol, uid), {
       username,
       userId: uid,
+      isMuted: false,
       joinedAt: serverTimestamp(),
       lastSeen: serverTimestamp(),
     });
 
-    startHeartbeat(usersCol, uid);
+    startHeartbeat(usersCol, uid, username);
+
+    unsubSelf = onSnapshot(doc(usersCol, uid), (snap) => {
+      if (!snap.exists() && connected.value) {
+        console.warn("[signaling] my presence doc was deleted externally, re-writing");
+        setDoc(doc(usersCol, uid), {
+          username,
+          userId: uid,
+          joinedAt: serverTimestamp(),
+          lastSeen: serverTimestamp(),
+        }).catch(() => {});
+      }
+    });
 
     let initialSnapshot = true;
     const knownPeers = new Set<string>();
@@ -163,7 +182,7 @@ export function useSignaling() {
           }
         }
         if (!data.username) return;
-        currentUsers.push({ id: d.id, username: data.username });
+        currentUsers.push({ id: d.id, username: data.username, isMuted: data.isMuted ?? false });
       });
       users.value = currentUsers;
 
@@ -236,8 +255,10 @@ export function useSignaling() {
 
     stopHeartbeat();
 
+    unsubSelf?.();
     unsubUsers?.();
     unsubSignals?.();
+    unsubSelf = null;
     unsubUsers = null;
     unsubSignals = null;
 
@@ -252,6 +273,12 @@ export function useSignaling() {
     myId.value = null;
     currentRoomId = null;
     callbacks = null;
+  }
+
+  async function updateMuteState(muted: boolean) {
+    if (!currentRoomId || !myId.value) return;
+    const usersCol = collection(db, `rooms/${currentRoomId}/users`);
+    await setDoc(doc(usersCol, myId.value), { isMuted: muted }, { merge: true }).catch(() => {});
   }
 
   async function removePeerDoc(peerId: string) {
@@ -269,6 +296,7 @@ export function useSignaling() {
     joinRoom,
     leaveRoom,
     sendSignal,
+    updateMuteState,
     removePeerDoc,
   };
 }

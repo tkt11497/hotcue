@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { ref, computed, watch, onMounted, onUnmounted } from "vue";
 import type { RoomUser } from "../composables/useSignaling";
 import type { PeerState } from "../composables/useWebRTC";
 import AudioPeer from "./AudioPeer.vue";
@@ -34,10 +34,67 @@ const rttClass = computed(() => {
   if (rtt < 150) return "ok";
   return "bad";
 });
+
+const networkOnline = ref(navigator.onLine);
+function onOnline() { networkOnline.value = true; }
+function onOffline() { networkOnline.value = false; }
+onMounted(() => {
+  window.addEventListener("online", onOnline);
+  window.addEventListener("offline", onOffline);
+});
+onUnmounted(() => {
+  window.removeEventListener("online", onOnline);
+  window.removeEventListener("offline", onOffline);
+});
+
+const initialConnectDone = ref(false);
+
+const allConnected = computed(() => {
+  if (otherUsers.value.length === 0) return true;
+  for (const user of otherUsers.value) {
+    const pc = props.peerConnectionStates.get(user.id);
+    if (!pc || pc.connectionState !== "connected") return false;
+  }
+  return true;
+});
+
+const showConnectingScreen = computed(() => {
+  if (initialConnectDone.value) return false;
+  if (otherUsers.value.length === 0) return false;
+  return !allConnected.value;
+});
+
+watch(allConnected, (val) => {
+  if (val && !initialConnectDone.value) {
+    initialConnectDone.value = true;
+  }
+});
+
+const hasDisconnectedPeer = computed(() => {
+  for (const [, pc] of props.peerConnectionStates) {
+    if (pc.connectionState === "disconnected" || pc.connectionState === "failed") return true;
+  }
+  return false;
+});
 </script>
 
 <template>
-  <div class="room">
+  <!-- Connecting screen: shown only during initial join -->
+  <div v-if="showConnectingScreen" class="connecting-screen">
+    <div class="connecting-card">
+      <div class="connecting-spinner"></div>
+      <h2>Connecting to {{ roomName || roomId }}</h2>
+      <p>Setting up voice with {{ otherUsers.length }} {{ otherUsers.length === 1 ? 'user' : 'users' }}...</p>
+      <button class="btn-leave" @click="emit('leave')">Cancel</button>
+    </div>
+    <!-- Still attach audio elements so handshake audio starts flowing immediately -->
+    <div style="display:none">
+      <AudioPeer v-for="user in otherUsers" :key="user.id" :stream="peerStates.get(user.id)?.stream ?? null" />
+    </div>
+  </div>
+
+  <!-- Normal room UI -->
+  <div v-else class="room">
     <div class="room-header">
       <div class="room-info">
         <h2>
@@ -67,6 +124,28 @@ const rttClass = computed(() => {
       </button>
     </div>
 
+    <!-- Network status banner -->
+    <div v-if="!networkOnline" class="network-banner offline">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <line x1="1" y1="1" x2="23" y2="23" />
+        <path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55" />
+        <path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39" />
+        <path d="M10.71 5.05A16 16 0 0 1 22.56 9" />
+        <path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88" />
+        <path d="M8.53 16.11a6 6 0 0 1 6.95 0" />
+        <line x1="12" y1="20" x2="12.01" y2="20" />
+      </svg>
+      <span>No internet connection — audio may be interrupted</span>
+    </div>
+
+    <!-- Reconnecting banner (peer dropped mid-call) -->
+    <div v-else-if="hasDisconnectedPeer" class="network-banner reconnecting">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M1 4v6h6" /><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+      </svg>
+      <span>Connection unstable — reconnecting...</span>
+    </div>
+
     <div class="participants">
       <!-- Self -->
       <div class="participant self" :class="{ muted: isMuted }">
@@ -93,16 +172,22 @@ const rttClass = computed(() => {
         v-for="user in otherUsers"
         :key="user.id"
         class="participant"
+        :class="{ muted: user.isMuted }"
       >
         <div class="avatar">
           <span>{{ (user.username || "?")[0].toUpperCase() }}</span>
-          <div class="speaking-ring"></div>
+          <div class="speaking-ring" v-if="!user.isMuted"></div>
         </div>
         <span class="name">{{ user.username || "Unknown" }}</span>
-        <div class="status-icon active-icon">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <div class="status-icon" :class="user.isMuted ? 'muted-icon' : 'active-icon'">
+          <svg v-if="!user.isMuted" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
             <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+          </svg>
+          <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="1" y1="1" x2="23" y2="23" />
+            <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6" />
+            <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2c0 .76-.13 1.49-.35 2.17" />
           </svg>
         </div>
         <AudioPeer :stream="peerStates.get(user.id)?.stream ?? null" />
@@ -158,12 +243,100 @@ const rttClass = computed(() => {
 </template>
 
 <style scoped>
+/* --- Connecting screen --- */
+
+.connecting-screen {
+  width: 100%;
+  max-width: 600px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 300px;
+}
+
+.connecting-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 48px 40px;
+  text-align: center;
+  animation: fade-in 0.3s ease;
+}
+
+.connecting-card h2 {
+  font-size: 1.15rem;
+  font-weight: 700;
+}
+
+.connecting-card p {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.connecting-spinner {
+  width: 48px;
+  height: 48px;
+  border: 3px solid var(--border);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* --- Room layout --- */
+
 .room {
   width: 100%;
   max-width: 600px;
   display: flex;
   flex-direction: column;
   gap: 24px;
+}
+
+/* --- Banners --- */
+
+.network-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border-radius: var(--radius);
+  font-size: 0.85rem;
+  font-weight: 600;
+  animation: banner-in 0.3s ease;
+}
+
+.network-banner.offline {
+  background: rgba(231, 76, 60, 0.12);
+  border: 1px solid rgba(231, 76, 60, 0.35);
+  color: #e74c3c;
+}
+
+.network-banner.reconnecting {
+  background: rgba(243, 156, 18, 0.12);
+  border: 1px solid rgba(243, 156, 18, 0.35);
+  color: #f39c12;
+}
+
+.network-banner.reconnecting svg {
+  animation: spin 1.5s linear infinite;
+}
+
+@keyframes banner-in {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .room-header {
