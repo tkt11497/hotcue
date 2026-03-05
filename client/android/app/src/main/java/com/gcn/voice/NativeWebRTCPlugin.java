@@ -1,9 +1,15 @@
 package com.gcn.voice;
 
 import android.Manifest;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
+import android.media.AudioAttributes;
 import android.media.AudioManager;
+import android.media.MediaPlayer;
+import android.media.RingtoneManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Handler;
@@ -12,6 +18,8 @@ import android.os.Looper;
 import android.os.PowerManager;
 import android.provider.Settings;
 import android.util.Log;
+
+import androidx.core.app.NotificationCompat;
 
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
@@ -89,6 +97,12 @@ public class NativeWebRTCPlugin extends Plugin {
     private volatile String hbProjectId;
     private volatile boolean heartbeatRunning = false;
 
+    // --- Disconnect notification fields ---
+    private static final String DISCONNECT_CHANNEL_ID = "gcn_voice_disconnect";
+    private static final int DISCONNECT_NOTIFICATION_ID = 2001;
+    private volatile String currentRoomName = null;
+    private volatile boolean disconnectNotified = false;
+
     private final Runnable heartbeatRunnable = new Runnable() {
         @Override
         public void run() {
@@ -114,9 +128,29 @@ public class NativeWebRTCPlugin extends Plugin {
             factory = PeerConnectionFactory.builder()
                 .createPeerConnectionFactory();
 
+            createDisconnectNotificationChannel();
+
             Log.d(TAG, "PeerConnectionFactory initialized");
         } catch (Exception e) {
             Log.e(TAG, "Failed to initialize PeerConnectionFactory", e);
+        }
+    }
+
+    private void createDisconnectNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationChannel channel = new NotificationChannel(
+                DISCONNECT_CHANNEL_ID,
+                "Voice Disconnect Alerts",
+                NotificationManager.IMPORTANCE_HIGH
+            );
+            channel.setDescription("Alerts when voice connection is lost");
+            channel.enableVibration(true);
+            channel.setVibrationPattern(new long[]{0, 300, 200, 300});
+
+            NotificationManager nm = (NotificationManager) getContext().getSystemService(Context.NOTIFICATION_SERVICE);
+            if (nm != null) {
+                nm.createNotificationChannel(channel);
+            }
         }
     }
 
@@ -620,6 +654,96 @@ public class NativeWebRTCPlugin extends Plugin {
     }
 
     @PluginMethod()
+    public void setRoomName(PluginCall call) {
+        currentRoomName = call.getString("roomName", "");
+        disconnectNotified = false;
+        Log.d(TAG, "Room name set: " + currentRoomName);
+        call.resolve();
+    }
+
+    private void playNativeDisconnectTone() {
+        new Thread(() -> {
+            try {
+                int soundResId = getContext().getResources().getIdentifier(
+                    "disconnect", "raw", getContext().getPackageName()
+                );
+
+                AudioAttributes attrs = new AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_ALARM)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    .build();
+
+                MediaPlayer mp;
+                if (soundResId != 0) {
+                    mp = MediaPlayer.create(getContext(), soundResId, attrs, 0);
+                    Log.d(TAG, "Disconnect tone: using custom res/raw/disconnect");
+                } else {
+                    Uri fallbackUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
+                    if (fallbackUri == null) {
+                        fallbackUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM);
+                    }
+                    mp = new MediaPlayer();
+                    mp.setDataSource(getContext(), fallbackUri);
+                    mp.setAudioAttributes(attrs);
+                    mp.prepare();
+                    Log.d(TAG, "Disconnect tone: using system notification fallback");
+                }
+
+                if (mp != null) {
+                    mp.setOnCompletionListener(MediaPlayer::release);
+                    mp.start();
+                }
+            } catch (Exception e) {
+                Log.w(TAG, "Failed to play disconnect tone", e);
+            }
+        }, "DisconnectTone").start();
+    }
+
+    private void showDisconnectNotification() {
+        try {
+            String roomName = currentRoomName;
+            String title = "Voice Disconnected";
+            String body = roomName != null && !roomName.isEmpty()
+                ? "You were disconnected from \"" + roomName + "\""
+                : "Your voice connection was lost";
+
+            Intent launchIntent = getContext().getPackageManager()
+                .getLaunchIntentForPackage(getContext().getPackageName());
+            PendingIntent pi = PendingIntent.getActivity(
+                getContext(), 0, launchIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+            );
+
+            NotificationCompat.Builder builder = new NotificationCompat.Builder(getContext(), DISCONNECT_CHANNEL_ID)
+                .setSmallIcon(getContext().getApplicationInfo().icon)
+                .setContentTitle(title)
+                .setContentText(body)
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setAutoCancel(true)
+                .setContentIntent(pi)
+                .setVibrate(new long[]{0, 300, 200, 300});
+
+            NotificationManager nm = (NotificationManager) getContext().getSystemService(Context.NOTIFICATION_SERVICE);
+            if (nm != null) {
+                nm.notify(DISCONNECT_NOTIFICATION_ID, builder.build());
+            }
+
+            Log.d(TAG, "Disconnect notification shown: " + body);
+        } catch (Exception e) {
+            Log.w(TAG, "Failed to show disconnect notification", e);
+        }
+    }
+
+    private void onAllPeersDisconnected() {
+        if (disconnectNotified) return;
+        disconnectNotified = true;
+
+        Log.w(TAG, "All peers disconnected — playing tone and showing notification");
+        playNativeDisconnectTone();
+        showDisconnectNotification();
+    }
+
+    @PluginMethod()
     public void requestBatteryExemption(PluginCall call) {
         try {
             PowerManager pm = (PowerManager) getContext().getSystemService(Context.POWER_SERVICE);
@@ -858,6 +982,20 @@ public class NativeWebRTCPlugin extends Plugin {
         }
     }
 
+    private void checkAllPeersDown() {
+        if (peerConnections.isEmpty()) return;
+        for (PeerConnection pc : peerConnections.values()) {
+            PeerConnection.IceConnectionState s = pc.iceConnectionState();
+            if (s == PeerConnection.IceConnectionState.CONNECTED ||
+                s == PeerConnection.IceConnectionState.COMPLETED ||
+                s == PeerConnection.IceConnectionState.CHECKING ||
+                s == PeerConnection.IceConnectionState.NEW) {
+                return;
+            }
+        }
+        onAllPeersDisconnected();
+    }
+
     @Override
     protected void handleOnDestroy() {
         try {
@@ -922,6 +1060,13 @@ public class NativeWebRTCPlugin extends Plugin {
                     JSObject unreachable = new JSObject();
                     unreachable.put("peerId", peerId);
                     notifyListeners("onPeerUnreachable", unreachable);
+
+                    checkAllPeersDown();
+                }
+
+                if (state == PeerConnection.IceConnectionState.CONNECTED ||
+                    state == PeerConnection.IceConnectionState.COMPLETED) {
+                    disconnectNotified = false;
                 }
             } catch (Exception e) {
                 Log.e(TAG, peerId + " onIceConnectionChange error", e);

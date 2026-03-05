@@ -9,11 +9,13 @@ let roomsLoaded = false;
 
 const props = defineProps<{
   error: string | null;
+  disconnectInfo: string | null;
   connecting: boolean;
 }>();
 
 const emit = defineEmits<{
   join: [roomId: string];
+  "dismiss-disconnect": [];
 }>();
 
 interface RoomEntry {
@@ -81,6 +83,21 @@ function joinRoom(roomId: string) {
       <h2>Voice Rooms</h2>
       <p class="subtitle">Welcome, {{ userProfile?.displayName }}</p>
 
+      <div v-if="disconnectInfo" class="disconnect-msg">
+        <div class="disconnect-content">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.42 19.42 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91" />
+            <line x1="23" y1="1" x2="1" y2="23" />
+          </svg>
+          <span>{{ disconnectInfo }}</span>
+        </div>
+        <button class="dismiss-btn" @click="emit('dismiss-disconnect')" title="Dismiss">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+      </div>
+
       <div v-if="error" class="error-msg">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <circle cx="12" cy="12" r="10" />
@@ -146,6 +163,48 @@ h2 {
   color: var(--text-muted);
   font-size: 0.9rem;
   margin-bottom: 24px;
+}
+
+.disconnect-msg {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: rgba(243, 156, 18, 0.1);
+  border: 1px solid rgba(243, 156, 18, 0.35);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  font-size: 0.85rem;
+  color: #f39c12;
+  margin-bottom: 16px;
+  text-align: left;
+  animation: slide-in 0.3s ease;
+}
+
+.disconnect-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dismiss-btn {
+  background: none;
+  border: none;
+  color: #f39c12;
+  cursor: pointer;
+  padding: 2px;
+  opacity: 0.7;
+  transition: opacity 0.2s;
+  flex-shrink: 0;
+}
+
+.dismiss-btn:hover {
+  opacity: 1;
+}
+
+@keyframes slide-in {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .error-msg {

@@ -45,6 +45,7 @@ export interface NativeWebRTCPluginInterface {
     sdpMid: string;
     sdpMLineIndex: number;
   }): Promise<void>;
+  setRoomName(options: { roomName: string }): Promise<void>;
   requestBatteryExemption(): Promise<void>;
   removePeer(options: { peerId: string }): Promise<void>;
   closeAllPeers(): Promise<void>;

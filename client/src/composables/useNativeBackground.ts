@@ -45,6 +45,7 @@ export function useNativeBackground() {
           smallIcon: "ic_launcher",
           silent: true,
           buttons: [{ title: "Hang Up", id: 1 }],
+          types: ["microphone", "mediaPlayback"],
         });
         console.log("[native-bg] foreground service started");
       } catch (err) {

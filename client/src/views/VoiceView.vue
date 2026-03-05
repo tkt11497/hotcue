@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onUnmounted } from "vue";
+import { ref, onMounted, onUnmounted } from "vue";
 import { Capacitor } from "@capacitor/core";
 import { useAuth } from "../composables/useAuth";
 import { useSignaling } from "../composables/useSignaling";
@@ -11,6 +11,8 @@ import { doc, getDoc } from "firebase/firestore";
 import { NativeWebRTC } from "../plugins/NativeWebRTCPlugin";
 import LobbyView from "../components/LobbyView.vue";
 import RoomView from "../components/RoomView.vue";
+
+const SESSION_KEY = "gcn_voice_active_session";
 
 const { userProfile } = useAuth();
 const signaling = useSignaling();
@@ -37,12 +39,110 @@ function stopPolling() {
 onUnmounted(stopPolling);
 
 const connectionError = ref<string | null>(null);
+const disconnectInfo = ref<string | null>(null);
 const joining = ref(false);
 const currentRoomName = ref("");
 const lastRoomId = ref<string | null>(null);
 let visibilityHandler: (() => void) | null = null;
 let reconnecting = false;
 let batteryExemptionRequested = false;
+
+// --- Disconnect sound ---
+
+function playDisconnectSound() {
+  try {
+    const ctx = new AudioContext();
+    const now = ctx.currentTime;
+
+    const osc1 = ctx.createOscillator();
+    const osc2 = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc1.type = "sine";
+    osc1.frequency.value = 480;
+    osc2.type = "sine";
+    osc2.frequency.value = 620;
+
+    gain.gain.setValueAtTime(0.18, now);
+    gain.gain.linearRampToValueAtTime(0.18, now + 0.15);
+    gain.gain.linearRampToValueAtTime(0, now + 0.2);
+    gain.gain.setValueAtTime(0.18, now + 0.3);
+    gain.gain.linearRampToValueAtTime(0.18, now + 0.45);
+    gain.gain.linearRampToValueAtTime(0, now + 0.55);
+    gain.gain.setValueAtTime(0.15, now + 0.65);
+    gain.gain.linearRampToValueAtTime(0, now + 0.9);
+
+    osc1.frequency.setValueAtTime(480, now);
+    osc1.frequency.setValueAtTime(480, now + 0.3);
+    osc1.frequency.setValueAtTime(380, now + 0.65);
+
+    osc2.frequency.setValueAtTime(620, now);
+    osc2.frequency.setValueAtTime(620, now + 0.3);
+    osc2.frequency.setValueAtTime(480, now + 0.65);
+
+    osc1.connect(gain);
+    osc2.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc1.start(now);
+    osc2.start(now);
+    osc1.stop(now + 1);
+    osc2.stop(now + 1);
+
+    setTimeout(() => ctx.close(), 1200);
+  } catch (e) {
+    console.warn("[voice] disconnect sound failed:", e);
+  }
+}
+
+// --- Session persistence (survives crash/kill/tab close) ---
+
+function saveSession(roomId: string, roomName: string) {
+  try {
+    localStorage.setItem(SESSION_KEY, JSON.stringify({ roomId, roomName, ts: Date.now() }));
+  } catch { /* ignore */ }
+}
+
+function clearSession() {
+  try {
+    localStorage.removeItem(SESSION_KEY);
+  } catch { /* ignore */ }
+}
+
+function consumePreviousSession(): { roomId: string; roomName: string } | null {
+  try {
+    const raw = localStorage.getItem(SESSION_KEY);
+    if (!raw) return null;
+    localStorage.removeItem(SESSION_KEY);
+    const data = JSON.parse(raw);
+    const age = Date.now() - (data.ts || 0);
+    if (age > 24 * 60 * 60 * 1000) return null;
+    return { roomId: data.roomId, roomName: data.roomName };
+  } catch {
+    return null;
+  }
+}
+
+// --- Unclean disconnect handler ---
+
+function handleUncleanDisconnect(roomName: string) {
+  playDisconnectSound();
+  disconnectInfo.value = `You were disconnected from "${roomName}"`;
+  setTimeout(() => {
+    if (disconnectInfo.value) disconnectInfo.value = null;
+  }, 15000);
+}
+
+// --- Check for previous session on mount (crash/kill detection) ---
+
+onMounted(() => {
+  const prev = consumePreviousSession();
+  if (prev && !signaling.connected.value) {
+    handleUncleanDisconnect(prev.roomName);
+  }
+});
+
+// --- Widget ---
 
 let widgetListenerCleanup: { remove: () => void } | undefined;
 
@@ -94,16 +194,39 @@ onUnmounted(() => {
   stopVisibilityWatcher();
 });
 
+// --- Join / Leave ---
+
 async function handleJoin(roomId: string) {
   if (!userProfile.value || !roomId.trim()) return;
 
   try {
     connectionError.value = null;
+    disconnectInfo.value = null;
     joining.value = true;
     lastRoomId.value = roomId;
 
     const roomSnap = await getDoc(doc(db, "rooms", roomId));
     currentRoomName.value = roomSnap.data()?.name || roomId;
+
+    saveSession(roomId, currentRoomName.value);
+
+    if (Capacitor.isNativePlatform()) {
+      NativeWebRTC.setRoomName({ roomName: currentRoomName.value }).catch(() => {});
+
+      if (!batteryExemptionRequested) {
+        batteryExemptionRequested = true;
+        await NativeWebRTC.requestBatteryExemption().catch(() => {});
+      }
+    }
+
+    await nativeBg.start(roomId, {
+      onToggleMute: () => handleToggleMute(),
+      onHangup: () => handleLeave(),
+    });
+
+    if (Capacitor.isNativePlatform()) {
+      await new Promise(resolve => setTimeout(resolve, 300));
+    }
 
     await webrtc.startMicrophone();
 
@@ -130,7 +253,8 @@ async function handleJoin(roomId: string) {
             ).length;
             if (othersInRoom > 0) {
               console.warn("[voice] all RTC peers lost but room still has users — auto-leaving");
-              handleLeave();
+              const name = currentRoomName.value;
+              handleLeave().then(() => handleUncleanDisconnect(name));
             }
           }, 15000);
         }
@@ -169,20 +293,11 @@ async function handleJoin(roomId: string) {
       } catch (err) {
         console.warn("[voice] failed to start native heartbeat:", err);
       }
-
-      if (!batteryExemptionRequested) {
-        batteryExemptionRequested = true;
-        NativeWebRTC.requestBatteryExemption().catch(() => {});
-      }
     }
 
     startVisibilityWatcher(roomId);
     startPolling();
     startWidgetSync();
-    nativeBg.start(roomId, {
-      onToggleMute: () => handleToggleMute(),
-      onHangup: () => handleLeave(),
-    });
   } catch (err: any) {
     connectionError.value = err.message || "Failed to connect";
   } finally {
@@ -218,6 +333,8 @@ function startVisibilityWatcher(roomId: string) {
         await handleJoin(lastRoomId.value);
       } catch (err) {
         console.error("[voice] auto-reconnect failed:", err);
+        const name = currentRoomName.value;
+        handleUncleanDisconnect(name);
       } finally {
         reconnecting = false;
       }
@@ -249,6 +366,7 @@ async function handleLeave() {
   webrtc.stopMicrophone();
   await signaling.leaveRoom();
   lastRoomId.value = null;
+  clearSession();
 }
 </script>
 
@@ -256,8 +374,10 @@ async function handleLeave() {
   <LobbyView
     v-if="!signaling.roomId.value"
     :error="connectionError || webrtc.audioError.value"
+    :disconnect-info="disconnectInfo"
     :connecting="joining"
     @join="handleJoin"
+    @dismiss-disconnect="disconnectInfo = null"
   />
   <RoomView
     v-else
