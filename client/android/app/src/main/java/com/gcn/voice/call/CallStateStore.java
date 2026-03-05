@@ -15,6 +15,7 @@ public class CallStateStore {
         public final int rttMs;
         public final int jitterMs;
         public final int packetsLost;
+        public final int remoteTrackCount;
 
         public PeerSnapshot(
             String peerId,
@@ -22,7 +23,8 @@ public class CallStateStore {
             String iceState,
             int rttMs,
             int jitterMs,
-            int packetsLost
+            int packetsLost,
+            int remoteTrackCount
         ) {
             this.peerId = peerId;
             this.connectionState = connectionState;
@@ -30,6 +32,7 @@ public class CallStateStore {
             this.rttMs = rttMs;
             this.jitterMs = jitterMs;
             this.packetsLost = packetsLost;
+            this.remoteTrackCount = remoteTrackCount;
         }
     }
 

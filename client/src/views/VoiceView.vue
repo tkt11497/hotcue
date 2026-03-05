@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onUnmounted } from "vue";
+import { ref, onUnmounted, watch } from "vue";
 import { useAuth } from "../composables/useAuth";
 import { useSignaling } from "../composables/useSignaling";
 import { useWebRTC } from "../composables/useWebRTC";
@@ -37,6 +37,18 @@ onUnmounted(stopPolling);
 const connectionError = ref<string | null>(null);
 const joining = ref(false);
 const currentRoomName = ref("");
+
+watch(
+  () => [signaling.roomId.value, signaling.roomName.value] as const,
+  ([activeRoomId, activeRoomName]) => {
+    if (!activeRoomId) {
+      currentRoomName.value = "";
+      return;
+    }
+    currentRoomName.value = activeRoomName || activeRoomId;
+  },
+  { immediate: true }
+);
 
 let widgetListenerCleanup: { remove: () => void } | undefined;
 
@@ -108,7 +120,7 @@ async function handleJoin(roomId: string) {
       onPeerJoined: () => {},
       onPeerLeft: () => {},
       onSignal: () => {},
-    });
+    }, currentRoomName.value || roomId);
 
     startPolling();
     startWidgetSync();
@@ -131,6 +143,7 @@ async function handleLeave() {
   webrtc.closeAllPeers();
   webrtc.stopMicrophone();
   await signaling.leaveRoom();
+  currentRoomName.value = "";
 }
 </script>
 
@@ -145,6 +158,8 @@ async function handleLeave() {
     v-else
     :room-id="signaling.roomId.value!"
     :room-name="currentRoomName"
+    :joining-phase="joining"
+    :call-phase="signaling.callPhase.value"
     :users="signaling.users.value"
     :my-id="signaling.myId.value!"
     :peer-states="webrtc.peerStates"

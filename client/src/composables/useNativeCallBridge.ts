@@ -15,13 +15,16 @@ export interface NativeCallPeer {
   rttMs: number;
   jitterMs: number;
   packetsLost: number;
+  remoteTrackCount: number;
 }
 
 export interface NativeCallState {
   inCall: boolean;
   connected: boolean;
   isMuted: boolean;
+  callPhase: string;
   roomId: string | null;
+  roomName: string | null;
   myId: string | null;
   myUsername: string | null;
   startedAtEpochMs: number;
@@ -32,6 +35,7 @@ export interface NativeCallState {
 interface NativeCallBridgePlugin {
   startCall(options: {
     roomId: string;
+    roomName: string;
     userId: string;
     username: string;
     firebaseApiKey: string;
@@ -59,7 +63,9 @@ const state = reactive<NativeCallState>({
   inCall: false,
   connected: false,
   isMuted: false,
+  callPhase: "idle",
   roomId: null,
+  roomName: null,
   myId: null,
   myUsername: null,
   startedAtEpochMs: 0,
@@ -74,7 +80,9 @@ function applyState(next: NativeCallState) {
   state.inCall = !!next.inCall;
   state.connected = !!next.connected;
   state.isMuted = !!next.isMuted;
+  state.callPhase = next.callPhase || "idle";
   state.roomId = next.roomId ?? null;
+  state.roomName = next.roomName ?? null;
   state.myId = next.myId ?? null;
   state.myUsername = next.myUsername ?? null;
   state.startedAtEpochMs = next.startedAtEpochMs ?? 0;
@@ -96,12 +104,13 @@ async function ensureListener() {
 }
 
 export function useNativeCallBridge() {
-  async function startCall(roomId: string, userId: string, username: string) {
+  async function startCall(roomId: string, roomName: string, userId: string, username: string) {
     if (!isNative) return;
     await ensureListener();
     await NativeCallBridge.requestNotificationPermission().catch(() => {});
     await NativeCallBridge.startCall({
       roomId,
+      roomName,
       userId,
       username,
       firebaseApiKey: firebaseConfig.apiKey,

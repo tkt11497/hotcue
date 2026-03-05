@@ -8,6 +8,8 @@ import DebugPanel from "./DebugPanel.vue";
 const props = defineProps<{
   roomId: string;
   roomName: string;
+  joiningPhase: boolean;
+  callPhase: string;
   users: readonly RoomUser[];
   myId: string;
   peerStates: Map<string, PeerState>;
@@ -48,7 +50,7 @@ onUnmounted(() => {
 });
 
 const initialConnectDone = ref(false);
-let nativeConnectFallbackTimer: ReturnType<typeof setTimeout> | null = null;
+let joinPhaseTimeout: ReturnType<typeof setTimeout> | null = null;
 
 const allConnected = computed(() => {
   if (otherUsers.value.length === 0) return true;
@@ -60,9 +62,18 @@ const allConnected = computed(() => {
 });
 
 const showConnectingScreen = computed(() => {
+  if (!props.joiningPhase) return false;
   if (initialConnectDone.value) return false;
   if (otherUsers.value.length === 0) return false;
-  return !allConnected.value;
+  return ["joining_room", "signaling_ready", "rtc_connecting"].includes(props.callPhase);
+});
+
+const hasDisconnectedPeer = computed(() => {
+  if (props.callPhase === "degraded" || props.callPhase === "failed") return true;
+  for (const [, pc] of props.peerConnectionStates) {
+    if (pc.connectionState === "disconnected" || pc.connectionState === "failed") return true;
+  }
+  return false;
 });
 
 watch(allConnected, (val) => {
@@ -72,40 +83,42 @@ watch(allConnected, (val) => {
 });
 
 watch(
-  () => [props.socketConnected, otherUsers.value.length, props.peerConnectionStates.size] as const,
-  ([socketConnected, othersCount, peerStatesCount]) => {
-    if (initialConnectDone.value) return;
-
-    if (nativeConnectFallbackTimer) {
-      clearTimeout(nativeConnectFallbackTimer);
-      nativeConnectFallbackTimer = null;
+  () => [props.joiningPhase, props.callPhase, allConnected.value] as const,
+  ([joiningPhase, callPhase, everyoneConnected]) => {
+    if (!joiningPhase) return;
+    if (everyoneConnected || callPhase === "connected" || callPhase === "degraded" || callPhase === "failed") {
+      initialConnectDone.value = true;
     }
+  },
+  { immediate: true }
+);
 
-    // Native call state can be joined before per-peer connection states are fully populated.
-    // Avoid an infinite "Connecting..." UI by timing out the initial gate.
-    if (socketConnected && othersCount > 0 && peerStatesCount === 0) {
-      nativeConnectFallbackTimer = setTimeout(() => {
-        if (!initialConnectDone.value) {
-          initialConnectDone.value = true;
-        }
-      }, 4000);
+watch(
+  () => props.joiningPhase,
+  (isJoining) => {
+    if (isJoining) {
+      initialConnectDone.value = false;
+      if (joinPhaseTimeout) {
+        clearTimeout(joinPhaseTimeout);
+        joinPhaseTimeout = null;
+      }
+      // Hard guard: never block the UI forever if phase transitions are delayed.
+      joinPhaseTimeout = setTimeout(() => {
+        initialConnectDone.value = true;
+      }, 12000);
+    } else if (joinPhaseTimeout) {
+      clearTimeout(joinPhaseTimeout);
+      joinPhaseTimeout = null;
     }
   },
   { immediate: true }
 );
 
 onUnmounted(() => {
-  if (nativeConnectFallbackTimer) {
-    clearTimeout(nativeConnectFallbackTimer);
-    nativeConnectFallbackTimer = null;
+  if (joinPhaseTimeout) {
+    clearTimeout(joinPhaseTimeout);
+    joinPhaseTimeout = null;
   }
-});
-
-const hasDisconnectedPeer = computed(() => {
-  for (const [, pc] of props.peerConnectionStates) {
-    if (pc.connectionState === "disconnected" || pc.connectionState === "failed") return true;
-  }
-  return false;
 });
 </script>
 

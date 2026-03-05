@@ -1,10 +1,12 @@
-import { ref, reactive } from "vue";
+import { ref, reactive, watch } from "vue";
 import { useNativeCallBridge } from "./useNativeCallBridge";
 
 export interface PeerState {
   peerId: string;
   stream: MediaStream | null;
   connectionState: string;
+  iceState?: string;
+  remoteTrackCount?: number;
 }
 
 export type SendSignalFn = (to: string, type: string, payload: any) => void;
@@ -17,6 +19,19 @@ export function useWebRTC() {
   const isMuted = ref(false);
   const audioError = ref<string | null>(null);
   let stateSyncTimer: ReturnType<typeof setInterval> | null = null;
+
+  if (nativeCall.isNative) {
+    nativeCall.ensureListener().then(() => {
+      syncFromNative();
+    }).catch(() => {});
+    watch(
+      () => [nativeCall.state.isMuted, nativeCall.state.peers, nativeCall.state.inCall] as const,
+      () => {
+        syncFromNative();
+      },
+      { deep: true, immediate: true }
+    );
+  }
 
   async function startMicrophone() {
     if (nativeCall.isNative) {
@@ -42,7 +57,11 @@ export function useWebRTC() {
 
   function toggleMute() {
     if (nativeCall.isNative) {
-      nativeCall.toggleMute().catch((err) => console.warn("[native-call] toggle mute failed", err));
+      isMuted.value = !isMuted.value; // optimistic so UI color changes instantly
+      nativeCall.toggleMute().catch((err) => {
+        console.warn("[native-call] toggle mute failed", err);
+        syncFromNative();
+      });
       return;
     }
     if (!localStream.value) return;
@@ -108,11 +127,20 @@ export function useWebRTC() {
 
   function getPeerConnectionStates(): Map<string, { connectionState: string; iceState: string }> {
     const result = new Map<string, { connectionState: string; iceState: string }>();
-    for (const [id, peer] of peerStates) {
-      result.set(id, {
-        connectionState: peer.connectionState,
-        iceState: "unknown",
+    const nativePeers = nativeCall.state.peers;
+    for (const peer of nativePeers) {
+      result.set(peer.peerId, {
+        connectionState: peer.connectionState || "new",
+        iceState: peer.iceState || "unknown",
       });
+    }
+    if (nativePeers.length === 0) {
+      for (const [id, peer] of peerStates) {
+        result.set(id, {
+          connectionState: peer.connectionState || "new",
+          iceState: peer.iceState || "unknown",
+        });
+      }
     }
     return result;
   }
@@ -149,6 +177,8 @@ export function useWebRTC() {
         peerId: peer.peerId,
         stream: null,
         connectionState: peer.connectionState || "new",
+        iceState: peer.iceState || "unknown",
+        remoteTrackCount: peer.remoteTrackCount || 0,
       });
     }
   }

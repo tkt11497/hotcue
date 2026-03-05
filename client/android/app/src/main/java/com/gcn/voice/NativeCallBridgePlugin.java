@@ -70,6 +70,7 @@ public class NativeCallBridgePlugin extends Plugin {
     @PluginMethod
     public void startCall(PluginCall call) {
         String roomId = call.getString("roomId");
+        String roomName = call.getString("roomName");
         String userId = call.getString("userId");
         String username = call.getString("username");
         String firebaseApiKey = call.getString("firebaseApiKey");
@@ -84,6 +85,7 @@ public class NativeCallBridgePlugin extends Plugin {
         Intent intent = VoiceCallForegroundService.buildStartIntent(
             getContext(),
             roomId,
+            roomName == null ? roomId : roomName,
             userId,
             username,
             firebaseApiKey,
@@ -132,8 +134,10 @@ public class NativeCallBridgePlugin extends Plugin {
             state.put("connected", false);
             state.put("isMuted", false);
             state.put("roomId", JSONObject.NULL);
+            state.put("roomName", JSONObject.NULL);
             state.put("myId", JSONObject.NULL);
             state.put("myUsername", JSONObject.NULL);
+            state.put("callPhase", "idle");
             state.put("users", new JSONArray());
             state.put("peers", new JSONArray());
             JSObject res = new JSObject();

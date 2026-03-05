@@ -53,7 +53,7 @@ export function useSignaling() {
     for (const id of currentPeers) knownPeers.add(id);
   }, 500);
 
-  async function joinRoom(room: string, username: string, cbs: SignalCallbacks) {
+  async function joinRoom(room: string, username: string, cbs: SignalCallbacks, roomName?: string) {
     if (connected.value) return;
     callbacks = cbs;
 
@@ -91,7 +91,7 @@ export function useSignaling() {
       if (!allowedSnap.exists()) throw new Error("You are not allowed in this room");
     }
 
-    await nativeCall.startCall(room, uid, username);
+    await nativeCall.startCall(room, roomName || room, uid, username);
   }
 
   async function sendSignal(to: string, type: string, payload: any) {
@@ -122,8 +122,10 @@ export function useSignaling() {
   return {
     connected: readonly(connected),
     roomId: readonly(roomId),
+    roomName: computed(() => nativeCall.state.roomName || roomId.value || ""),
     users: readonly(users),
     myId: readonly(myId),
+    callPhase: computed(() => nativeCall.state.callPhase || "idle"),
     nativeReady: computed(() => nativeCall.ready.value),
     joinRoom,
     leaveRoom,

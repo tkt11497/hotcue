@@ -39,13 +39,18 @@ const peerEntries = computed(() => {
   for (const [id, state] of props.peerStates) {
     const pcInfo = props.peerConnectionStates.get(id);
     const tracks = state.stream?.getAudioTracks() ?? [];
+    const nativeTrackCount = state.remoteTrackCount ?? 0;
+    const totalTrackCount = Math.max(tracks.length, nativeTrackCount);
+    const hasStream = !!state.stream || totalTrackCount > 0;
     entries.push({
       id: id.substring(0, 8) + "...",
-      hasStream: !!state.stream,
-      trackCount: tracks.length,
-      trackDetails: tracks.map((t) => `${t.readyState} enabled=${t.enabled}`).join(", ") || "none",
+      hasStream,
+      trackCount: totalTrackCount,
+      trackDetails:
+        tracks.map((t) => `${t.readyState} enabled=${t.enabled}`).join(", ") ||
+        (nativeTrackCount > 0 ? `native-audio-track x${nativeTrackCount}` : "none"),
       connectionState: pcInfo?.connectionState ?? state.connectionState,
-      iceState: pcInfo?.iceState ?? "unknown",
+      iceState: pcInfo?.iceState ?? state.iceState ?? "unknown",
     });
   }
   return entries;

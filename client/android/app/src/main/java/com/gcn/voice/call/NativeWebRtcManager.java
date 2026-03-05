@@ -11,6 +11,9 @@ import org.webrtc.MediaStream;
 import org.webrtc.PeerConnection;
 import org.webrtc.PeerConnectionFactory;
 import org.webrtc.RtpReceiver;
+import org.webrtc.RTCStats;
+import org.webrtc.RTCStatsCollectorCallback;
+import org.webrtc.RTCStatsReport;
 import org.webrtc.SdpObserver;
 import org.webrtc.SessionDescription;
 
@@ -20,12 +23,23 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 public class NativeWebRtcManager {
 
+    public static class PeerDiagnostics {
+        public String connectionState = "new";
+        public String iceState = "new";
+        public int rttMs = -1;
+        public int jitterMs = -1;
+        public int packetsLost = 0;
+        public int remoteTrackCount = 0;
+    }
+
     public interface Callback {
         void onSignal(String to, String type, Map<String, Object> payload);
-        void onPeerState(String peerId, String connectionState, String iceState);
+        void onPeerState(String peerId, PeerDiagnostics diagnostics);
         void onError(String message);
     }
 
@@ -33,7 +47,9 @@ public class NativeWebRtcManager {
 
     private final Callback callback;
     private final ExecutorService rtcExecutor = Executors.newSingleThreadExecutor();
+    private final ScheduledExecutorService statsExecutor = Executors.newSingleThreadScheduledExecutor();
     private final Map<String, PeerConnection> peerConnections = new HashMap<>();
+    private final Map<String, PeerDiagnostics> peerDiagnostics = new HashMap<>();
     private final List<PeerConnection.IceServer> iceServers = new ArrayList<>();
 
     private PeerConnectionFactory factory;
@@ -57,6 +73,13 @@ public class NativeWebRtcManager {
         MediaConstraints audioConstraints = new MediaConstraints();
         localAudioSource = factory.createAudioSource(audioConstraints);
         localAudioTrack = factory.createAudioTrack("AUDIO_TRACK", localAudioSource);
+
+        statsExecutor.scheduleAtFixedRate(
+            () -> rtcExecutor.execute(this::collectStatsForAllPeers),
+            2,
+            2,
+            TimeUnit.SECONDS
+        );
     }
 
     public void setMuted(boolean muted) {
@@ -134,6 +157,7 @@ public class NativeWebRtcManager {
         rtcExecutor.execute(() -> {
             PeerConnection pc = peerConnections.remove(peerId);
             if (pc != null) pc.close();
+            peerDiagnostics.remove(peerId);
         });
     }
 
@@ -155,7 +179,9 @@ public class NativeWebRtcManager {
                 factory.dispose();
                 factory = null;
             }
+            peerDiagnostics.clear();
         });
+        statsExecutor.shutdownNow();
     }
 
     private PeerConnection ensurePeerConnection(String peerId) {
@@ -173,7 +199,28 @@ public class NativeWebRtcManager {
 
             @Override
             public void onIceConnectionChange(PeerConnection.IceConnectionState iceConnectionState) {
-                callback.onPeerState(peerId, "connecting", safeState(iceConnectionState));
+                String connectionState;
+                switch (iceConnectionState) {
+                    case CONNECTED:
+                    case COMPLETED:
+                        connectionState = "connected";
+                        break;
+                    case FAILED:
+                        connectionState = "failed";
+                        break;
+                    case DISCONNECTED:
+                        connectionState = "disconnected";
+                        break;
+                    case CLOSED:
+                        connectionState = "closed";
+                        break;
+                    case NEW:
+                    case CHECKING:
+                    default:
+                        connectionState = "connecting";
+                        break;
+                }
+                updateAndPublishPeerDiagnostics(peerId, connectionState, safeState(iceConnectionState));
             }
 
             @Override
@@ -207,11 +254,15 @@ public class NativeWebRtcManager {
             public void onRenegotiationNeeded() {}
 
             @Override
-            public void onAddTrack(RtpReceiver receiver, MediaStream[] mediaStreams) {}
+            public void onAddTrack(RtpReceiver receiver, MediaStream[] mediaStreams) {
+                PeerDiagnostics diag = getOrCreateDiagnostics(peerId);
+                diag.remoteTrackCount += 1;
+                callback.onPeerState(peerId, copyDiagnostics(diag));
+            }
 
             @Override
             public void onConnectionChange(PeerConnection.PeerConnectionState newState) {
-                callback.onPeerState(peerId, safeState(newState), currentIceState(peerId));
+                updateAndPublishPeerDiagnostics(peerId, safeState(newState), currentIceState(peerId));
             }
         });
 
@@ -229,8 +280,85 @@ public class NativeWebRtcManager {
         }
 
         peerConnections.put(peerId, pc);
-        callback.onPeerState(peerId, safeState(pc.connectionState()), safeState(pc.iceConnectionState()));
+        updateAndPublishPeerDiagnostics(peerId, safeState(pc.connectionState()), safeState(pc.iceConnectionState()));
         return pc;
+    }
+
+    private void collectStatsForAllPeers() {
+        for (Map.Entry<String, PeerConnection> entry : peerConnections.entrySet()) {
+            final String peerId = entry.getKey();
+            final PeerConnection pc = entry.getValue();
+            if (pc == null) continue;
+            pc.getStats(new RTCStatsCollectorCallback() {
+                @Override
+                public void onStatsDelivered(RTCStatsReport report) {
+                    rtcExecutor.execute(() -> {
+                        PeerDiagnostics diag = getOrCreateDiagnostics(peerId);
+                        int rttMs = -1;
+                        int jitterMs = -1;
+                        int packetsLost = 0;
+                        for (RTCStats stat : report.getStatsMap().values()) {
+                            if (stat == null) continue;
+                            String type = stat.getType();
+                            Map<String, Object> members = stat.getMembers();
+                            if ("candidate-pair".equals(type)) {
+                                Object state = members.get("state");
+                                if ("succeeded".equals(String.valueOf(state))) {
+                                    Object rtt = members.get("currentRoundTripTime");
+                                    if (rtt instanceof Number) {
+                                        rttMs = (int) Math.round(((Number) rtt).doubleValue() * 1000.0);
+                                    }
+                                }
+                            } else if ("inbound-rtp".equals(type)) {
+                                Object kind = members.get("kind");
+                                if (kind == null) kind = members.get("mediaType");
+                                if ("audio".equals(String.valueOf(kind))) {
+                                    Object jitter = members.get("jitter");
+                                    if (jitter instanceof Number) {
+                                        jitterMs = (int) Math.round(((Number) jitter).doubleValue() * 1000.0);
+                                    }
+                                    Object lost = members.get("packetsLost");
+                                    if (lost instanceof Number) {
+                                        packetsLost += ((Number) lost).intValue();
+                                    }
+                                }
+                            }
+                        }
+                        diag.rttMs = rttMs;
+                        diag.jitterMs = jitterMs;
+                        diag.packetsLost = packetsLost;
+                        callback.onPeerState(peerId, copyDiagnostics(diag));
+                    });
+                }
+            });
+        }
+    }
+
+    private PeerDiagnostics getOrCreateDiagnostics(String peerId) {
+        PeerDiagnostics diag = peerDiagnostics.get(peerId);
+        if (diag == null) {
+            diag = new PeerDiagnostics();
+            peerDiagnostics.put(peerId, diag);
+        }
+        return diag;
+    }
+
+    private void updateAndPublishPeerDiagnostics(String peerId, String connectionState, String iceState) {
+        PeerDiagnostics diag = getOrCreateDiagnostics(peerId);
+        diag.connectionState = connectionState;
+        diag.iceState = iceState;
+        callback.onPeerState(peerId, copyDiagnostics(diag));
+    }
+
+    private PeerDiagnostics copyDiagnostics(PeerDiagnostics source) {
+        PeerDiagnostics copy = new PeerDiagnostics();
+        copy.connectionState = source.connectionState;
+        copy.iceState = source.iceState;
+        copy.rttMs = source.rttMs;
+        copy.jitterMs = source.jitterMs;
+        copy.packetsLost = source.packetsLost;
+        copy.remoteTrackCount = source.remoteTrackCount;
+        return copy;
     }
 
     private String safeState(Enum<?> e) {

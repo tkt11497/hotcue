@@ -15,6 +15,7 @@ import com.google.firebase.firestore.FirebaseFirestore;
 import com.google.firebase.firestore.ListenerRegistration;
 import com.google.firebase.firestore.Query;
 import com.google.firebase.firestore.QuerySnapshot;
+import com.google.firebase.firestore.SetOptions;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -36,6 +37,8 @@ public class NativeSignalingClient {
 
     private static final long HEARTBEAT_INTERVAL_MS = 10_000L;
     private static final long STALE_THRESHOLD_MS = 35_000L;
+    private static final long STALE_SWEEP_INTERVAL_MS = 30_000L;
+    private static final long MAX_SIGNAL_AGE_MS = 60_000L;
 
     private final FirebaseFirestore db;
     private final Callback callback;
@@ -43,6 +46,7 @@ public class NativeSignalingClient {
     private ListenerRegistration usersRegistration;
     private ListenerRegistration signalsRegistration;
     private ScheduledExecutorService heartbeatExecutor;
+    private ScheduledExecutorService staleSweepExecutor;
     private String roomId;
     private String myId;
     private String myUsername;
@@ -104,6 +108,10 @@ public class NativeSignalingClient {
         CollectionReference usersCol = db.collection("rooms").document(roomId).collection("users");
         CollectionReference signalsCol = db.collection("rooms").document(roomId).collection("signals");
 
+        // Drain pending messages from previous crashed/abandoned sessions before listening.
+        cleanupPendingSignals(signalsCol, myId);
+        cleanupStaleUsers(usersCol, myId);
+
         Map<String, Object> me = new HashMap<>();
         me.put("username", myUsername);
         me.put("userId", myId);
@@ -124,12 +132,20 @@ public class NativeSignalingClient {
                     Object fromObj = doc.get("from");
                     Object typeObj = doc.get("type");
                     Object payloadObj = doc.get("payload");
-                    if (!(fromObj instanceof String) || !(typeObj instanceof String)) {
-                        continue;
+                    Timestamp createdAt = doc.getTimestamp("createdAt");
+                    boolean stale = false;
+                    if (createdAt != null) {
+                        long age = System.currentTimeMillis() - createdAt.toDate().getTime();
+                        stale = age > MAX_SIGNAL_AGE_MS;
                     }
-                    @SuppressWarnings("unchecked")
-                    Map<String, Object> payload = payloadObj instanceof Map ? (Map<String, Object>) payloadObj : new HashMap<>();
-                    callback.onSignal((String) fromObj, (String) typeObj, payload);
+
+                    if (!stale && (fromObj instanceof String) && (typeObj instanceof String)) {
+                        @SuppressWarnings("unchecked")
+                        Map<String, Object> payload = payloadObj instanceof Map ? (Map<String, Object>) payloadObj : new HashMap<>();
+                        callback.onSignal((String) fromObj, (String) typeObj, payload);
+                    }
+
+                    // Always delete handled/invalid/stale signal docs to avoid pile-up.
                     doc.getReference().delete();
                 }
             });
@@ -182,6 +198,7 @@ public class NativeSignalingClient {
         });
 
         startHeartbeat(usersCol);
+        startStaleSweep(usersCol, myId);
     }
 
     private void startHeartbeat(CollectionReference usersCol) {
@@ -193,8 +210,19 @@ public class NativeSignalingClient {
             hb.put("username", myUsername);
             hb.put("userId", myId);
             hb.put("lastSeen", FieldValue.serverTimestamp());
-            usersCol.document(myId).set(hb, com.google.firebase.firestore.SetOptions.merge());
+            usersCol.document(myId).set(hb, SetOptions.merge());
         }, HEARTBEAT_INTERVAL_MS, HEARTBEAT_INTERVAL_MS, TimeUnit.MILLISECONDS);
+    }
+
+    private void startStaleSweep(CollectionReference usersCol, String myUid) {
+        stopStaleSweep();
+        staleSweepExecutor = Executors.newSingleThreadScheduledExecutor();
+        staleSweepExecutor.scheduleAtFixedRate(
+            () -> cleanupStaleUsers(usersCol, myUid),
+            STALE_SWEEP_INTERVAL_MS,
+            STALE_SWEEP_INTERVAL_MS,
+            TimeUnit.MILLISECONDS
+        );
     }
 
     private void stopHeartbeat() {
@@ -204,10 +232,44 @@ public class NativeSignalingClient {
         }
     }
 
+    private void stopStaleSweep() {
+        if (staleSweepExecutor != null) {
+            staleSweepExecutor.shutdownNow();
+            staleSweepExecutor = null;
+        }
+    }
+
+    private void cleanupPendingSignals(CollectionReference signalsCol, String uid) {
+        signalsCol.whereEqualTo("to", uid).get()
+            .addOnSuccessListener(snapshot -> {
+                for (DocumentSnapshot d : snapshot.getDocuments()) {
+                    d.getReference().delete();
+                }
+            })
+            .addOnFailureListener(err -> callback.onError("Failed to cleanup pending signals: " + err.getMessage()));
+    }
+
+    private void cleanupStaleUsers(CollectionReference usersCol, String myUid) {
+        usersCol.get()
+            .addOnSuccessListener(snapshot -> {
+                long now = System.currentTimeMillis();
+                for (DocumentSnapshot d : snapshot.getDocuments()) {
+                    if (myUid.equals(d.getId())) continue;
+                    Timestamp lastSeen = d.getTimestamp("lastSeen");
+                    if (lastSeen == null) continue;
+                    long age = now - lastSeen.toDate().getTime();
+                    if (age > STALE_THRESHOLD_MS) {
+                        d.getReference().delete();
+                    }
+                }
+            })
+            .addOnFailureListener(err -> callback.onError("Failed stale user sweep: " + err.getMessage()));
+    }
+
     public void setMuted(boolean muted) {
         if (roomId == null || myId == null) return;
         db.collection("rooms").document(roomId).collection("users").document(myId)
-            .set(CollectionsUtil.mapOf("isMuted", muted), com.google.firebase.firestore.SetOptions.merge());
+            .set(CollectionsUtil.mapOf("isMuted", muted), SetOptions.merge());
     }
 
     public void sendSignal(String to, String type, Map<String, Object> payload) {
@@ -224,6 +286,7 @@ public class NativeSignalingClient {
 
     public void leaveRoom() {
         stopHeartbeat();
+        stopStaleSweep();
         if (usersRegistration != null) {
             usersRegistration.remove();
             usersRegistration = null;
