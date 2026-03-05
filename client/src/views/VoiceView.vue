@@ -42,6 +42,7 @@ const currentRoomName = ref("");
 const lastRoomId = ref<string | null>(null);
 let visibilityHandler: (() => void) | null = null;
 let reconnecting = false;
+let batteryExemptionRequested = false;
 
 let widgetListenerCleanup: { remove: () => void } | undefined;
 
@@ -114,7 +115,7 @@ async function handleJoin(roomId: string) {
     await webrtc.setup(
       (to, type, payload) => signaling.sendSignal(to, type, payload),
       (peerId) => {
-        console.log(`[voice] peer unreachable: ${peerId}, cleaning up ghost`);
+        console.log(`[voice] peer unreachable: ${peerId}, cleaning up`);
         webrtc.removePeer(peerId);
         signaling.removePeerDoc(peerId);
 
@@ -123,6 +124,7 @@ async function handleJoin(roomId: string) {
           allPeersLostTimer = setTimeout(() => {
             allPeersLostTimer = null;
             if (webrtc.peerStates.size > 0) return;
+            if (reconnecting) return;
             const othersInRoom = signaling.users.value.filter(
               (u) => u.id !== signaling.myId.value
             ).length;
@@ -130,7 +132,7 @@ async function handleJoin(roomId: string) {
               console.warn("[voice] all RTC peers lost but room still has users — auto-leaving");
               handleLeave();
             }
-          }, 5000);
+          }, 15000);
         }
       },
       myUid
@@ -166,6 +168,11 @@ async function handleJoin(roomId: string) {
         console.log("[voice] native heartbeat started");
       } catch (err) {
         console.warn("[voice] failed to start native heartbeat:", err);
+      }
+
+      if (!batteryExemptionRequested) {
+        batteryExemptionRequested = true;
+        NativeWebRTC.requestBatteryExemption().catch(() => {});
       }
     }
 

@@ -30,6 +30,7 @@ export interface SignalCallbacks {
 
 const HEARTBEAT_INTERVAL_MS = 10_000;
 const STALE_THRESHOLD_MS = 40_000;
+const CLOCK_SKEW_BUFFER_MS = 15_000;
 const STALE_SWEEP_INTERVAL_MS = 30_000;
 
 const connected = ref(false);
@@ -68,6 +69,7 @@ export function useSignaling() {
   async function cleanupStaleUsers(usersCol: ReturnType<typeof collection>, myUid: string) {
     const snapshot = await getDocs(usersCol);
     const now = Date.now();
+    const threshold = STALE_THRESHOLD_MS + CLOCK_SKEW_BUFFER_MS;
     for (const d of snapshot.docs) {
       if (d.id === myUid) continue;
       const data = d.data();
@@ -76,7 +78,7 @@ export function useSignaling() {
         continue;
       }
       const age = now - lastSeen.toMillis();
-      if (age > STALE_THRESHOLD_MS) {
+      if (age > threshold) {
         console.log(`[signaling] removing stale user ${d.id} (last seen ${Math.round(age / 1000)}s ago)`);
         await deleteDoc(d.ref).catch(() => {});
       }
@@ -170,13 +172,14 @@ export function useSignaling() {
 
     unsubUsers = onSnapshot(usersCol, (snapshot) => {
       const now = Date.now();
+      const threshold = STALE_THRESHOLD_MS + CLOCK_SKEW_BUFFER_MS;
       const currentUsers: RoomUser[] = [];
       snapshot.forEach((d) => {
         const data = d.data();
         const lastSeen = data.lastSeen as Timestamp | null;
         if (lastSeen && d.id !== uid) {
           const age = now - lastSeen.toMillis();
-          if (age > STALE_THRESHOLD_MS) {
+          if (age > threshold) {
             deleteDoc(d.ref).catch(() => {});
             return;
           }
@@ -284,8 +287,23 @@ export function useSignaling() {
   async function removePeerDoc(peerId: string) {
     if (!currentRoomId) return;
     const usersCol = collection(db, `rooms/${currentRoomId}/users`);
-    console.log(`[signaling] removing ghost peer doc: ${peerId}`);
-    await deleteDoc(doc(usersCol, peerId)).catch(() => {});
+    try {
+      const snap = await getDoc(doc(usersCol, peerId));
+      if (!snap.exists()) return;
+      const data = snap.data();
+      const lastSeen = data.lastSeen as Timestamp | null;
+      if (lastSeen) {
+        const age = Date.now() - lastSeen.toMillis();
+        if (age < STALE_THRESHOLD_MS) {
+          console.log(`[signaling] skipping removePeerDoc for ${peerId} — last seen ${Math.round(age / 1000)}s ago (still fresh)`);
+          return;
+        }
+      }
+      console.log(`[signaling] removing stale ghost peer doc: ${peerId}`);
+      await deleteDoc(doc(usersCol, peerId));
+    } catch (err) {
+      console.warn(`[signaling] removePeerDoc error for ${peerId}:`, err);
+    }
   }
 
   return {

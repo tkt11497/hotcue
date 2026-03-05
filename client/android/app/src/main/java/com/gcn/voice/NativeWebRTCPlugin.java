@@ -2,11 +2,15 @@ package com.gcn.voice;
 
 import android.Manifest;
 import android.content.Context;
+import android.content.Intent;
 import android.media.AudioManager;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.Looper;
+import android.os.PowerManager;
+import android.provider.Settings;
 import android.util.Log;
 
 import com.getcapacitor.JSArray;
@@ -612,6 +616,23 @@ public class NativeWebRTCPlugin extends Plugin {
             Log.w(TAG, "Heartbeat request failed: " + e.getMessage());
         } finally {
             if (conn != null) conn.disconnect();
+        }
+    }
+
+    @PluginMethod()
+    public void requestBatteryExemption(PluginCall call) {
+        try {
+            PowerManager pm = (PowerManager) getContext().getSystemService(Context.POWER_SERVICE);
+            if (pm != null && !pm.isIgnoringBatteryOptimizations(getContext().getPackageName())) {
+                Intent intent = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
+                intent.setData(Uri.parse("package:" + getContext().getPackageName()));
+                intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                getContext().startActivity(intent);
+            }
+            call.resolve();
+        } catch (Exception e) {
+            Log.w(TAG, "requestBatteryExemption error", e);
+            call.reject("Failed to request battery exemption", e);
         }
     }
 

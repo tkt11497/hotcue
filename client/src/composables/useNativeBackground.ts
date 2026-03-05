@@ -42,7 +42,7 @@ export function useNativeBackground() {
           id: 1001,
           title: "GCN Voice",
           body: `In call - Room: ${roomId}`,
-          smallIcon: "ic_stat_icon_config_sample",
+          smallIcon: "ic_launcher",
           silent: true,
           buttons: [{ title: "Hang Up", id: 1 }],
         });

@@ -84,7 +84,7 @@ const hasDisconnectedPeer = computed(() => {
   <div v-if="showConnectingScreen" class="connecting-screen">
     <div class="connecting-card">
       <div class="connecting-spinner"></div>
-      <h2>Connecting to {{ roomName || roomId }}</h2>
+      <h2>Connecting1 to {{ roomName || roomId }}</h2>
       <p>Setting up voice with {{ otherUsers.length }} {{ otherUsers.length === 1 ? 'user' : 'users' }}...</p>
       <button class="btn-leave" @click="emit('leave')">Cancel</button>
     </div>
