@@ -85,6 +85,14 @@ export function useWebRTC() {
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true,
+          // @ts-ignore — Chrome/WebView-specific enhanced audio processing
+          googEchoCancellation: true,
+          googAutoGainControl: true,
+          googNoiseSuppression: true,
+          googHighpassFilter: true,
+          googEchoCancellation2: true,
+          googAutoGainControl2: true,
+          googNoiseSuppression2: true,
         },
         video: false,
       });

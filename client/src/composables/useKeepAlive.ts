@@ -87,13 +87,13 @@ export function useKeepAlive() {
     try {
       audioCtx = new AudioContext();
       oscillator = audioCtx.createOscillator();
-      const gain = audioCtx.createGain();
-      oscillator.frequency.value = 20; // below human hearing threshold
-      gain.gain.value = 0.001; // essentially silent
-      oscillator.connect(gain);
-      gain.connect(audioCtx.destination);
+      oscillator.frequency.value = 20;
+      const silentGain = audioCtx.createGain();
+      silentGain.gain.value = 0;
+      oscillator.connect(silentGain);
+      silentGain.connect(audioCtx.destination);
       oscillator.start();
-      console.log("[keepalive] audio oscillator started");
+      console.log("[keepalive] audio oscillator started (silent)");
     } catch (err) {
       console.warn("[keepalive] audio oscillator failed:", err);
     }
