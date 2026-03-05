@@ -29,7 +29,7 @@ export interface SignalCallbacks {
 }
 
 const HEARTBEAT_INTERVAL_MS = 10_000;
-const STALE_THRESHOLD_MS = 35_000;
+const STALE_THRESHOLD_MS = 40_000;
 const STALE_SWEEP_INTERVAL_MS = 30_000;
 
 const connected = ref(false);

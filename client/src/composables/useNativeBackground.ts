@@ -81,7 +81,9 @@ export function useNativeBackground() {
       }
     }
 
-    keepAlive.start(roomId, callbacks);
+    if (!isNative) {
+      keepAlive.start(roomId, callbacks);
+    }
     console.log(`[native-bg] started (native=${isNative})`);
   }
 
@@ -89,7 +91,9 @@ export function useNativeBackground() {
     if (!active.value) return;
     active.value = false;
 
-    keepAlive.stop();
+    if (!isNative) {
+      keepAlive.stop();
+    }
 
     if (isNative) {
       if (fgServicePlugin) {
@@ -102,7 +106,9 @@ export function useNativeBackground() {
   }
 
   function updateMicrophoneState(isMuted: boolean) {
-    keepAlive.updateMicrophoneState(isMuted);
+    if (!isNative) {
+      keepAlive.updateMicrophoneState(isMuted);
+    }
   }
 
   return {

@@ -12,6 +12,7 @@ public class MainActivity extends BridgeActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         registerPlugin(WidgetBridgePlugin.class);
+        registerPlugin(NativeWebRTCPlugin.class);
         super.onCreate(savedInstanceState);
 
         PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);

@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { ref, onUnmounted } from "vue";
+import { Capacitor } from "@capacitor/core";
 import { useAuth } from "../composables/useAuth";
 import { useSignaling } from "../composables/useSignaling";
-import { useWebRTC } from "../composables/useWebRTC";
+import { useWebRTC } from "../composables/useWebRTCBridge";
 import { useNativeBackground } from "../composables/useNativeBackground";
 import { useWidget } from "../composables/useWidget";
-import { db } from "../firebase";
+import { db, auth } from "../firebase";
 import { doc, getDoc } from "firebase/firestore";
+import { NativeWebRTC } from "../plugins/NativeWebRTCPlugin";
 import LobbyView from "../components/LobbyView.vue";
 import RoomView from "../components/RoomView.vue";
 
@@ -37,6 +39,9 @@ onUnmounted(stopPolling);
 const connectionError = ref<string | null>(null);
 const joining = ref(false);
 const currentRoomName = ref("");
+const lastRoomId = ref<string | null>(null);
+let visibilityHandler: (() => void) | null = null;
+let reconnecting = false;
 
 let widgetListenerCleanup: { remove: () => void } | undefined;
 
@@ -85,6 +90,7 @@ function stopWidgetSync() {
 onUnmounted(() => {
   widgetListenerCleanup?.remove();
   stopWidgetSync();
+  stopVisibilityWatcher();
 });
 
 async function handleJoin(roomId: string) {
@@ -93,16 +99,19 @@ async function handleJoin(roomId: string) {
   try {
     connectionError.value = null;
     joining.value = true;
+    lastRoomId.value = roomId;
 
     const roomSnap = await getDoc(doc(db, "rooms", roomId));
     currentRoomName.value = roomSnap.data()?.name || roomId;
 
     await webrtc.startMicrophone();
 
+    const myUid = auth.currentUser?.uid ?? undefined;
+
     let hadPeers = false;
     let allPeersLostTimer: ReturnType<typeof setTimeout> | null = null;
 
-    webrtc.setup(
+    await webrtc.setup(
       (to, type, payload) => signaling.sendSignal(to, type, payload),
       (peerId) => {
         console.log(`[voice] peer unreachable: ${peerId}, cleaning up ghost`);
@@ -123,7 +132,8 @@ async function handleJoin(roomId: string) {
             }
           }, 5000);
         }
-      }
+      },
+      myUid
     );
 
     await signaling.joinRoom(roomId, userProfile.value.displayName, {
@@ -144,6 +154,22 @@ async function handleJoin(roomId: string) {
       },
     });
 
+    if (Capacitor.isNativePlatform() && myUid) {
+      try {
+        const idToken = await auth.currentUser!.getIdToken();
+        await NativeWebRTC.startHeartbeat({
+          roomId,
+          userId: myUid,
+          idToken,
+          projectId: "hot-cue",
+        });
+        console.log("[voice] native heartbeat started");
+      } catch (err) {
+        console.warn("[voice] failed to start native heartbeat:", err);
+      }
+    }
+
+    startVisibilityWatcher(roomId);
     startPolling();
     startWidgetSync();
     nativeBg.start(roomId, {
@@ -157,14 +183,65 @@ async function handleJoin(roomId: string) {
   }
 }
 
+function startVisibilityWatcher(roomId: string) {
+  stopVisibilityWatcher();
+
+  visibilityHandler = async () => {
+    if (document.visibilityState !== "visible") return;
+    if (reconnecting) return;
+
+    console.log("[voice] app returned to foreground");
+
+    if (Capacitor.isNativePlatform() && auth.currentUser) {
+      try {
+        const freshToken = await auth.currentUser.getIdToken(true);
+        await NativeWebRTC.updateHeartbeatToken({ idToken: freshToken });
+        console.log("[voice] heartbeat token refreshed");
+      } catch (err) {
+        console.warn("[voice] token refresh failed:", err);
+      }
+    }
+
+    if (!signaling.connected.value && lastRoomId.value && userProfile.value) {
+      console.log("[voice] signaling disconnected while backgrounded, auto-reconnecting...");
+      reconnecting = true;
+      try {
+        webrtc.teardown();
+        webrtc.closeAllPeers();
+        await handleJoin(lastRoomId.value);
+      } catch (err) {
+        console.error("[voice] auto-reconnect failed:", err);
+      } finally {
+        reconnecting = false;
+      }
+    }
+  };
+
+  document.addEventListener("visibilitychange", visibilityHandler);
+}
+
+function stopVisibilityWatcher() {
+  if (visibilityHandler) {
+    document.removeEventListener("visibilitychange", visibilityHandler);
+    visibilityHandler = null;
+  }
+}
+
 async function handleLeave() {
+  stopVisibilityWatcher();
   stopWidgetSync();
   nativeBg.stop();
   stopPolling();
+
+  if (Capacitor.isNativePlatform()) {
+    NativeWebRTC.stopHeartbeat().catch(() => {});
+  }
+
   webrtc.teardown();
   webrtc.closeAllPeers();
   webrtc.stopMicrophone();
   await signaling.leaveRoom();
+  lastRoomId.value = null;
 }
 </script>
 
@@ -188,6 +265,7 @@ async function handleLeave() {
     :mic-stream="webrtc.localStream.value"
     :peer-connection-states="pcStates"
     :latency="latencyInfo"
+    :is-native="Capacitor.isNativePlatform()"
     @toggle-mute="handleToggleMute()"
     @leave="handleLeave"
   />

@@ -77,6 +77,7 @@ export function useWebRTC() {
   const disconnectTimers = new Map<string, ReturnType<typeof setTimeout>>();
   let sendSignalFn: SendSignalFn | null = null;
   let peerUnreachableFn: PeerUnreachableFn | null = null;
+  let localUserId: string | null = null;
 
   async function startMicrophone() {
     try {
@@ -118,14 +119,16 @@ export function useWebRTC() {
     });
   }
 
-  function setup(sendSignal: SendSignalFn, onPeerUnreachable?: PeerUnreachableFn) {
+  function setup(sendSignal: SendSignalFn, onPeerUnreachable?: PeerUnreachableFn, myId?: string) {
     sendSignalFn = sendSignal;
     peerUnreachableFn = onPeerUnreachable ?? null;
+    localUserId = myId ?? null;
   }
 
   function teardown() {
     sendSignalFn = null;
     peerUnreachableFn = null;
+    localUserId = null;
     offerTimeouts.forEach((t) => clearTimeout(t));
     offerTimeouts.clear();
     disconnectTimers.forEach((t) => clearTimeout(t));
@@ -283,6 +286,17 @@ export function useWebRTC() {
 
   async function handleOffer(peerId: string, offer: RTCSessionDescriptionInit) {
     console.log(`[rtc] === handleOffer from ${peerId}, sdp length: ${offer.sdp?.length} ===`);
+
+    const existing = peerConnections.get(peerId);
+    if (existing && existing.signalingState === "have-local-offer") {
+      const isPolite = localUserId ? localUserId < peerId : true;
+      if (!isPolite) {
+        console.log(`[rtc] glare with ${peerId}: I'm impolite (my id > peer id), ignoring incoming offer`);
+        return;
+      }
+      console.log(`[rtc] glare with ${peerId}: I'm polite, accepting incoming offer`);
+    }
+
     const pc = await createPeerConnection(peerId);
 
     try {
@@ -313,6 +327,11 @@ export function useWebRTC() {
     const pc = peerConnections.get(peerId);
     if (!pc) {
       console.error(`[rtc] no PC found for ${peerId} when handling answer`);
+      return;
+    }
+
+    if (pc.signalingState !== "have-local-offer") {
+      console.warn(`[rtc] handleAnswer: ignoring answer from ${peerId}, PC in state "${pc.signalingState}" (expected "have-local-offer")`);
       return;
     }
 

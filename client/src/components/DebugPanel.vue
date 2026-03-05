@@ -11,6 +11,7 @@ const props = defineProps<{
   isMuted: boolean;
   peerStates: Map<string, PeerState>;
   peerConnectionStates: Map<string, { connectionState: string; iceState: string }>;
+  isNative: boolean;
 }>();
 
 const expanded = ref(true);
@@ -19,11 +20,19 @@ let audioCtx: AudioContext | null = null;
 let oscillator: OscillatorNode | null = null;
 
 const micTrackInfo = computed(() => {
+  if (props.isNative) {
+    return props.isMuted ? "Native Audio (muted)" : "Native Audio (active)";
+  }
   if (!props.micStream) return "No microphone";
   const tracks = props.micStream.getAudioTracks();
   if (tracks.length === 0) return "No audio tracks";
   const t = tracks[0];
   return `${t.label} [${t.readyState}] enabled=${t.enabled}`;
+});
+
+const micOk = computed(() => {
+  if (props.isNative) return !props.isMuted;
+  return !!props.micStream;
 });
 
 const peerEntries = computed(() => {
@@ -38,15 +47,27 @@ const peerEntries = computed(() => {
 
   for (const [id, state] of props.peerStates) {
     const pcInfo = props.peerConnectionStates.get(id);
-    const tracks = state.stream?.getAudioTracks() ?? [];
-    entries.push({
-      id: id.substring(0, 8) + "...",
-      hasStream: !!state.stream,
-      trackCount: tracks.length,
-      trackDetails: tracks.map((t) => `${t.readyState} enabled=${t.enabled}`).join(", ") || "none",
-      connectionState: pcInfo?.connectionState ?? state.connectionState,
-      iceState: pcInfo?.iceState ?? "unknown",
-    });
+
+    if (props.isNative) {
+      entries.push({
+        id: id.substring(0, 8) + "...",
+        hasStream: pcInfo?.connectionState === "connected",
+        trackCount: pcInfo?.connectionState === "connected" ? 1 : 0,
+        trackDetails: pcInfo?.connectionState === "connected" ? "native audio playback" : "waiting",
+        connectionState: pcInfo?.connectionState ?? state.connectionState,
+        iceState: pcInfo?.iceState ?? "unknown",
+      });
+    } else {
+      const tracks = state.stream?.getAudioTracks() ?? [];
+      entries.push({
+        id: id.substring(0, 8) + "...",
+        hasStream: !!state.stream,
+        trackCount: tracks.length,
+        trackDetails: tracks.map((t) => `${t.readyState} enabled=${t.enabled}`).join(", ") || "none",
+        connectionState: pcInfo?.connectionState ?? state.connectionState,
+        iceState: pcInfo?.iceState ?? "unknown",
+      });
+    }
   }
   return entries;
 });
@@ -90,11 +111,11 @@ onUnmounted(() => stopTestTone());
       {{ expanded ? "Hide" : "Show" }} Debug
     </button>
     <div v-if="expanded" class="debug-content">
-      <h4>Connection Pipeline</h4>
+      <h4>Connection Pipeline <span v-if="isNative" class="native-badge">NATIVE</span></h4>
 
       <div class="step" :class="socketConnected ? 'ok' : 'fail'">
         <span class="dot" />
-        <span><b>1. Socket.io</b>: {{ socketConnected ? "Connected" : "Disconnected" }}
+        <span><b>1. Signaling</b>: {{ socketConnected ? "Connected" : "Disconnected" }}
           <span v-if="socketId" class="mono">{{ socketId.substring(0, 8) }}...</span>
         </span>
       </div>
@@ -104,14 +125,14 @@ onUnmounted(() => stopTestTone());
         <span><b>2. Room</b>: {{ roomId ?? "Not joined" }} ({{ userCount }} users)</span>
       </div>
 
-      <div class="step" :class="micStream ? 'ok' : 'fail'">
+      <div class="step" :class="micOk ? 'ok' : 'fail'">
         <span class="dot" />
         <span><b>3. Microphone</b>: {{ micTrackInfo }} | Muted: {{ isMuted }}</span>
       </div>
 
       <div v-if="peerEntries.length === 0" class="step wait">
         <span class="dot" />
-        <span><b>4. Peers</b>: No peers connected (open a 2nd browser tab to test)</span>
+        <span><b>4. Peers</b>: No peers connected</span>
       </div>
 
       <div v-for="(peer, i) in peerEntries" :key="peer.id" class="peer-block">
@@ -126,7 +147,9 @@ onUnmounted(() => stopTestTone());
         </div>
         <div class="step" :class="peer.hasStream ? 'ok' : 'fail'">
           <span class="dot" />
-          <span><b>6. Remote Stream</b>: {{ peer.hasStream ? "Received" : "Missing" }} ({{ peer.trackCount }} tracks: {{ peer.trackDetails }})</span>
+          <span><b>6. {{ isNative ? "Audio" : "Remote Stream" }}</b>: {{ peer.hasStream ? (isNative ? "Native Playback Active" : "Received") : "Missing" }}
+            <template v-if="!isNative"> ({{ peer.trackCount }} tracks: {{ peer.trackDetails }})</template>
+          </span>
         </div>
       </div>
 
@@ -176,6 +199,19 @@ h4 {
   margin-bottom: 4px;
   color: #8b8fa3;
   text-transform: uppercase;
+  letter-spacing: 0.5px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.native-badge {
+  font-size: 0.65rem;
+  background: #6c5ce7;
+  color: white;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-weight: 700;
   letter-spacing: 0.5px;
 }
 

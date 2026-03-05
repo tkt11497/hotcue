@@ -17,6 +17,7 @@ const props = defineProps<{
   micStream: MediaStream | null;
   peerConnectionStates: Map<string, { connectionState: string; iceState: string }>;
   latency: { rtt: number | null; jitter: number | null; packetsLost: number };
+  isNative?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -87,8 +88,8 @@ const hasDisconnectedPeer = computed(() => {
       <p>Setting up voice with {{ otherUsers.length }} {{ otherUsers.length === 1 ? 'user' : 'users' }}...</p>
       <button class="btn-leave" @click="emit('leave')">Cancel</button>
     </div>
-    <!-- Still attach audio elements so handshake audio starts flowing immediately -->
-    <div style="display:none">
+    <!-- Attach audio elements so handshake audio starts flowing (browser only; native handles audio natively) -->
+    <div v-if="!isNative" style="display:none">
       <AudioPeer v-for="user in otherUsers" :key="user.id" :stream="peerStates.get(user.id)?.stream ?? null" />
     </div>
   </div>
@@ -190,7 +191,7 @@ const hasDisconnectedPeer = computed(() => {
             <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2c0 .76-.13 1.49-.35 2.17" />
           </svg>
         </div>
-        <AudioPeer :stream="peerStates.get(user.id)?.stream ?? null" />
+        <AudioPeer v-if="!isNative" :stream="peerStates.get(user.id)?.stream ?? null" />
       </div>
     </div>
 
@@ -238,6 +239,7 @@ const hasDisconnectedPeer = computed(() => {
       :is-muted="isMuted"
       :peer-states="peerStates"
       :peer-connection-states="peerConnectionStates"
+      :is-native="isNative ?? false"
     />
   </div>
 </template>
