@@ -7,8 +7,11 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.os.Build;
 import android.view.View;
 import android.widget.RemoteViews;
+
+import com.gcn.voice.call.VoiceCallForegroundService;
 
 public class VoiceWidget extends AppWidgetProvider {
 
@@ -34,17 +37,15 @@ public class VoiceWidget extends AppWidgetProvider {
 
         switch (action) {
             case ACTION_TOGGLE_MUTE: {
-                Intent fwd = new Intent("com.gcn.voice.FROM_WIDGET");
-                fwd.putExtra("action", "toggleMute");
-                fwd.setPackage(context.getPackageName());
-                context.sendBroadcast(fwd);
+                Intent serviceIntent = new Intent(context, VoiceCallForegroundService.class);
+                serviceIntent.setAction(VoiceCallForegroundService.ACTION_TOGGLE_MUTE);
+                startServiceCompat(context, serviceIntent);
                 break;
             }
             case ACTION_HANGUP: {
-                Intent fwd = new Intent("com.gcn.voice.FROM_WIDGET");
-                fwd.putExtra("action", "hangup");
-                fwd.setPackage(context.getPackageName());
-                context.sendBroadcast(fwd);
+                Intent serviceIntent = new Intent(context, VoiceCallForegroundService.class);
+                serviceIntent.setAction(VoiceCallForegroundService.ACTION_HANGUP);
+                startServiceCompat(context, serviceIntent);
                 break;
             }
             case ACTION_OPEN_APP: {
@@ -120,5 +121,13 @@ public class VoiceWidget extends AppWidgetProvider {
         intent.setAction(action);
         return PendingIntent.getBroadcast(context, requestCode, intent,
             PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+    }
+
+    private static void startServiceCompat(Context context, Intent intent) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            context.startForegroundService(intent);
+        } else {
+            context.startService(intent);
+        }
     }
 }

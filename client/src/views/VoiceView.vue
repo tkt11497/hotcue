@@ -99,49 +99,15 @@ async function handleJoin(roomId: string) {
 
     await webrtc.startMicrophone();
 
-    let hadPeers = false;
-    let allPeersLostTimer: ReturnType<typeof setTimeout> | null = null;
-
     webrtc.setup(
-      (to, type, payload) => signaling.sendSignal(to, type, payload),
-      (peerId) => {
-        console.log(`[voice] peer unreachable: ${peerId}, cleaning up ghost`);
-        webrtc.removePeer(peerId);
-        signaling.removePeerDoc(peerId);
-
-        if (hadPeers && webrtc.peerStates.size === 0) {
-          if (allPeersLostTimer) clearTimeout(allPeersLostTimer);
-          allPeersLostTimer = setTimeout(() => {
-            allPeersLostTimer = null;
-            if (webrtc.peerStates.size > 0) return;
-            const othersInRoom = signaling.users.value.filter(
-              (u) => u.id !== signaling.myId.value
-            ).length;
-            if (othersInRoom > 0) {
-              console.warn("[voice] all RTC peers lost but room still has users — auto-leaving");
-              handleLeave();
-            }
-          }, 5000);
-        }
-      }
+      () => {},
+      () => {}
     );
 
     await signaling.joinRoom(roomId, userProfile.value.displayName, {
-      onPeerJoined: (peerId) => {
-        console.log(`[voice] peer joined: ${peerId}`);
-        hadPeers = true;
-        webrtc.createOffer(peerId);
-      },
-      onPeerLeft: (peerId) => {
-        console.log(`[voice] peer left: ${peerId}`);
-        webrtc.removePeer(peerId);
-      },
-      onSignal: (from, type, payload) => {
-        console.log(`[voice] signal from ${from}: ${type}`);
-        if (type === "offer") webrtc.handleOffer(from, payload);
-        else if (type === "answer") webrtc.handleAnswer(from, payload);
-        else if (type === "ice-candidate") webrtc.handleIceCandidate(from, payload);
-      },
+      onPeerJoined: () => {},
+      onPeerLeft: () => {},
+      onSignal: () => {},
     });
 
     startPolling();

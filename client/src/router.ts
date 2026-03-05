@@ -38,6 +38,12 @@ const router = createRouter({
       meta: { requiresAuth: true, requiresSecurity: true },
     },
     {
+      path: "/call-reliability",
+      name: "call-reliability",
+      component: () => import("./views/CallReliabilityView.vue"),
+      meta: { requiresAuth: true },
+    },
+    {
       path: "/admin",
       component: () => import("./views/AdminView.vue"),
       meta: { requiresAuth: true, requiresAdmin: true },

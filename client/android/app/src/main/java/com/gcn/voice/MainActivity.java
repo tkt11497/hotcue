@@ -2,7 +2,6 @@ package com.gcn.voice;
 
 import android.os.Bundle;
 import android.os.PowerManager;
-import android.webkit.WebView;
 import com.getcapacitor.BridgeActivity;
 
 public class MainActivity extends BridgeActivity {
@@ -12,6 +11,7 @@ public class MainActivity extends BridgeActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         registerPlugin(WidgetBridgePlugin.class);
+        registerPlugin(NativeCallBridgePlugin.class);
         super.onCreate(savedInstanceState);
 
         PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
@@ -24,12 +24,6 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onPause() {
         super.onPause();
-
-        WebView wv = getBridge().getWebView();
-        if (wv != null) {
-            wv.onResume();
-            wv.resumeTimers();
-        }
 
         if (cpuWakeLock != null && !cpuWakeLock.isHeld()) {
             cpuWakeLock.acquire(4 * 60 * 60 * 1000L);

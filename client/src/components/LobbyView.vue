@@ -113,6 +113,7 @@ function joinRoom(roomId: string) {
           </svg>
         </button>
       </div>
+      <RouterLink class="reliability-link" to="/call-reliability">Improve call reliability</RouterLink>
     </div>
   </div>
 </template>
@@ -214,5 +215,12 @@ h2 {
 .room-item:hover:not(:disabled) .join-arrow {
   transform: translateX(3px);
   color: var(--primary);
+}
+
+.reliability-link {
+  display: inline-block;
+  margin-top: 14px;
+  color: var(--text-muted);
+  font-size: 0.85rem;
 }
 </style>

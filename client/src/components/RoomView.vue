@@ -48,6 +48,7 @@ onUnmounted(() => {
 });
 
 const initialConnectDone = ref(false);
+let nativeConnectFallbackTimer: ReturnType<typeof setTimeout> | null = null;
 
 const allConnected = computed(() => {
   if (otherUsers.value.length === 0) return true;
@@ -67,6 +68,36 @@ const showConnectingScreen = computed(() => {
 watch(allConnected, (val) => {
   if (val && !initialConnectDone.value) {
     initialConnectDone.value = true;
+  }
+});
+
+watch(
+  () => [props.socketConnected, otherUsers.value.length, props.peerConnectionStates.size] as const,
+  ([socketConnected, othersCount, peerStatesCount]) => {
+    if (initialConnectDone.value) return;
+
+    if (nativeConnectFallbackTimer) {
+      clearTimeout(nativeConnectFallbackTimer);
+      nativeConnectFallbackTimer = null;
+    }
+
+    // Native call state can be joined before per-peer connection states are fully populated.
+    // Avoid an infinite "Connecting..." UI by timing out the initial gate.
+    if (socketConnected && othersCount > 0 && peerStatesCount === 0) {
+      nativeConnectFallbackTimer = setTimeout(() => {
+        if (!initialConnectDone.value) {
+          initialConnectDone.value = true;
+        }
+      }, 4000);
+    }
+  },
+  { immediate: true }
+);
+
+onUnmounted(() => {
+  if (nativeConnectFallbackTimer) {
+    clearTimeout(nativeConnectFallbackTimer);
+    nativeConnectFallbackTimer = null;
   }
 });
 
