@@ -9,6 +9,7 @@ import android.os.Build;
 import android.provider.Settings;
 
 import com.getcapacitor.JSObject;
+import com.getcapacitor.PermissionState;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
@@ -24,7 +25,8 @@ import org.json.JSONObject;
 @CapacitorPlugin(
     name = "NativeCallBridge",
     permissions = {
-        @Permission(strings = { Manifest.permission.POST_NOTIFICATIONS }, alias = "notifications")
+        @Permission(strings = { Manifest.permission.POST_NOTIFICATIONS }, alias = "notifications"),
+        @Permission(strings = { Manifest.permission.RECORD_AUDIO }, alias = "audio")
     }
 )
 public class NativeCallBridgePlugin extends Plugin {
@@ -82,6 +84,10 @@ public class NativeCallBridgePlugin extends Plugin {
             call.reject("roomId, userId and username are required");
             return;
         }
+        if (getPermissionState("audio") != PermissionState.GRANTED) {
+            call.reject("Microphone permission is required");
+            return;
+        }
         Intent intent = VoiceCallForegroundService.buildStartIntent(
             getContext(),
             roomId,
@@ -127,12 +133,25 @@ public class NativeCallBridgePlugin extends Plugin {
     }
 
     @PluginMethod
+    public void toggleSpeaker(PluginCall call) {
+        Intent i = new Intent(getContext(), VoiceCallForegroundService.class);
+        i.setAction(VoiceCallForegroundService.ACTION_TOGGLE_SPEAKER);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            getContext().startForegroundService(i);
+        } else {
+            getContext().startService(i);
+        }
+        call.resolve();
+    }
+
+    @PluginMethod
     public void getCallState(PluginCall call) {
         if (lastStateJson == null) {
             JSObject state = new JSObject();
             state.put("inCall", false);
             state.put("connected", false);
             state.put("isMuted", false);
+            state.put("isSpeakerOn", false);
             state.put("roomId", JSONObject.NULL);
             state.put("roomName", JSONObject.NULL);
             state.put("myId", JSONObject.NULL);
@@ -175,8 +194,22 @@ public class NativeCallBridgePlugin extends Plugin {
         requestPermissionForAlias("notifications", call, "notificationPermsResult");
     }
 
+    @PluginMethod
+    public void requestAudioPermission(PluginCall call) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+            call.resolve();
+            return;
+        }
+        requestPermissionForAlias("audio", call, "audioPermsResult");
+    }
+
     @PermissionCallback
     private void notificationPermsResult(PluginCall call) {
+        call.resolve();
+    }
+
+    @PermissionCallback
+    private void audioPermsResult(PluginCall call) {
         call.resolve();
     }
 }

@@ -22,6 +22,7 @@ export interface NativeCallState {
   inCall: boolean;
   connected: boolean;
   isMuted: boolean;
+  isSpeakerOn: boolean;
   callPhase: string;
   roomId: string | null;
   roomName: string | null;
@@ -45,10 +46,12 @@ interface NativeCallBridgePlugin {
     firebaseMessagingSenderId?: string;
   }): Promise<void>;
   toggleMute(): Promise<void>;
+  toggleSpeaker(): Promise<void>;
   hangup(): Promise<void>;
   getCallState(): Promise<{ state: NativeCallState }>;
   openBatteryOptimizationSettings(): Promise<void>;
   requestNotificationPermission(): Promise<void>;
+  requestAudioPermission(): Promise<void>;
   addListener(
     event: "callState",
     handler: (payload: { state: NativeCallState }) => void
@@ -63,6 +66,7 @@ const state = reactive<NativeCallState>({
   inCall: false,
   connected: false,
   isMuted: false,
+  isSpeakerOn: false,
   callPhase: "idle",
   roomId: null,
   roomName: null,
@@ -80,6 +84,7 @@ function applyState(next: NativeCallState) {
   state.inCall = !!next.inCall;
   state.connected = !!next.connected;
   state.isMuted = !!next.isMuted;
+  state.isSpeakerOn = !!next.isSpeakerOn;
   state.callPhase = next.callPhase || "idle";
   state.roomId = next.roomId ?? null;
   state.roomName = next.roomName ?? null;
@@ -108,6 +113,7 @@ export function useNativeCallBridge() {
     if (!isNative) return;
     await ensureListener();
     await NativeCallBridge.requestNotificationPermission().catch(() => {});
+    await NativeCallBridge.requestAudioPermission();
     await NativeCallBridge.startCall({
       roomId,
       roomName,
@@ -124,6 +130,11 @@ export function useNativeCallBridge() {
   async function toggleMute() {
     if (!isNative) return;
     await NativeCallBridge.toggleMute();
+  }
+
+  async function toggleSpeaker() {
+    if (!isNative) return;
+    await NativeCallBridge.toggleSpeaker();
   }
 
   async function hangup() {
@@ -144,6 +155,7 @@ export function useNativeCallBridge() {
     ensureListener,
     startCall,
     toggleMute,
+    toggleSpeaker,
     hangup,
     openBatteryOptimizationSettings,
   };

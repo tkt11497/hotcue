@@ -51,6 +51,7 @@ public class CallStateStore {
     public static class Snapshot {
         public final boolean inCall;
         public final boolean isMuted;
+        public final boolean isSpeakerOn;
         public final boolean connected;
         public final String roomId;
         public final String myId;
@@ -62,6 +63,7 @@ public class CallStateStore {
         public Snapshot(
             boolean inCall,
             boolean isMuted,
+            boolean isSpeakerOn,
             boolean connected,
             String roomId,
             String myId,
@@ -72,6 +74,7 @@ public class CallStateStore {
         ) {
             this.inCall = inCall;
             this.isMuted = isMuted;
+            this.isSpeakerOn = isSpeakerOn;
             this.connected = connected;
             this.roomId = roomId;
             this.myId = myId;
@@ -84,6 +87,7 @@ public class CallStateStore {
 
     private boolean inCall = false;
     private boolean isMuted = false;
+    private boolean isSpeakerOn = false;
     private boolean connected = false;
     private String roomId = null;
     private String myId = null;
@@ -107,6 +111,7 @@ public class CallStateStore {
     public synchronized void endCall() {
         this.inCall = false;
         this.connected = false;
+        this.isSpeakerOn = false;
         this.roomId = null;
         this.myId = null;
         this.myUsername = null;
@@ -131,6 +136,14 @@ public class CallStateStore {
         return isMuted;
     }
 
+    public synchronized void setSpeakerOn(boolean speakerOn) {
+        this.isSpeakerOn = speakerOn;
+    }
+
+    public synchronized boolean isSpeakerOn() {
+        return isSpeakerOn;
+    }
+
     public synchronized void upsertPeer(PeerSnapshot peer) {
         this.peers.put(peer.peerId, peer);
     }
@@ -153,6 +166,7 @@ public class CallStateStore {
         return new Snapshot(
             inCall,
             isMuted,
+            isSpeakerOn,
             connected,
             roomId,
             myId,

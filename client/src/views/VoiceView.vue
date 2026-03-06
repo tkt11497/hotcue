@@ -70,6 +70,10 @@ function handleToggleMute() {
   syncWidget();
 }
 
+function handleToggleSpeaker() {
+  webrtc.toggleSpeaker();
+}
+
 function syncWidget() {
   if (!signaling.roomId.value) return;
   widget.updateCallState(
@@ -164,12 +168,14 @@ async function handleLeave() {
     :my-id="signaling.myId.value!"
     :peer-states="webrtc.peerStates"
     :is-muted="webrtc.isMuted.value"
+    :is-speaker-on="webrtc.isSpeakerOn.value"
     :socket-connected="signaling.connected.value"
     :socket-id="signaling.myId.value"
     :mic-stream="webrtc.localStream.value"
     :peer-connection-states="pcStates"
     :latency="latencyInfo"
     @toggle-mute="handleToggleMute()"
+    @toggle-speaker="handleToggleSpeaker()"
     @leave="handleLeave"
   />
 </template>

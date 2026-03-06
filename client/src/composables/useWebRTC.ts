@@ -17,6 +17,7 @@ export function useWebRTC() {
   const localStream = ref<MediaStream | null>(null);
   const peerStates = reactive<Map<string, PeerState>>(new Map());
   const isMuted = ref(false);
+  const isSpeakerOn = ref(false);
   const audioError = ref<string | null>(null);
   let stateSyncTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -25,7 +26,7 @@ export function useWebRTC() {
       syncFromNative();
     }).catch(() => {});
     watch(
-      () => [nativeCall.state.isMuted, nativeCall.state.peers, nativeCall.state.inCall] as const,
+      () => [nativeCall.state.isMuted, nativeCall.state.isSpeakerOn, nativeCall.state.peers, nativeCall.state.inCall] as const,
       () => {
         syncFromNative();
       },
@@ -67,6 +68,15 @@ export function useWebRTC() {
     if (!localStream.value) return;
     isMuted.value = !isMuted.value;
     localStream.value.getAudioTracks().forEach((t) => (t.enabled = !isMuted.value));
+  }
+
+  function toggleSpeaker() {
+    if (!nativeCall.isNative) return;
+    isSpeakerOn.value = !isSpeakerOn.value; // optimistic update for snappy UI feedback
+    nativeCall.toggleSpeaker().catch((err) => {
+      console.warn("[native-call] toggle speaker failed", err);
+      syncFromNative();
+    });
   }
 
   function setup(sendSignal: SendSignalFn, onPeerUnreachable?: PeerUnreachableFn) {
@@ -171,6 +181,7 @@ export function useWebRTC() {
   function syncFromNative() {
     if (!nativeCall.isNative) return;
     isMuted.value = nativeCall.state.isMuted;
+    isSpeakerOn.value = nativeCall.state.isSpeakerOn;
     peerStates.clear();
     for (const peer of nativeCall.state.peers) {
       peerStates.set(peer.peerId, {
@@ -187,10 +198,12 @@ export function useWebRTC() {
     localStream,
     peerStates,
     isMuted,
+    isSpeakerOn,
     audioError,
     startMicrophone,
     stopMicrophone,
     toggleMute,
+    toggleSpeaker,
     setup,
     teardown,
     createOffer,

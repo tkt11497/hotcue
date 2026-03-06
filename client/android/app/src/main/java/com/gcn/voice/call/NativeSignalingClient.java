@@ -242,8 +242,17 @@ public class NativeSignalingClient {
     private void cleanupPendingSignals(CollectionReference signalsCol, String uid) {
         signalsCol.whereEqualTo("to", uid).get()
             .addOnSuccessListener(snapshot -> {
+                long now = System.currentTimeMillis();
                 for (DocumentSnapshot d : snapshot.getDocuments()) {
-                    d.getReference().delete();
+                    Timestamp createdAt = d.getTimestamp("createdAt");
+                    if (createdAt == null) {
+                        // Keep undated docs to avoid dropping fresh offers during join races.
+                        continue;
+                    }
+                    long age = now - createdAt.toDate().getTime();
+                    if (age > MAX_SIGNAL_AGE_MS) {
+                        d.getReference().delete();
+                    }
                 }
             })
             .addOnFailureListener(err -> callback.onError("Failed to cleanup pending signals: " + err.getMessage()));

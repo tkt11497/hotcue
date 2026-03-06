@@ -92,6 +92,10 @@ public class NativeWebRtcManager {
         rtcExecutor.execute(() -> {
             PeerConnection pc = ensurePeerConnection(peerId);
             if (pc == null) return;
+            if (pc.signalingState() != PeerConnection.SignalingState.STABLE) {
+                Log.w(TAG, "Skip createOffer for " + peerId + " in state " + pc.signalingState());
+                return;
+            }
             pc.createOffer(new SdpAdapter() {
                 @Override
                 public void onCreateSuccess(SessionDescription sdp) {
@@ -111,22 +115,24 @@ public class NativeWebRtcManager {
             if (pc == null) return;
             String sdp = safeString(payload.get("sdp"));
             if (sdp == null) return;
-            SessionDescription remote = new SessionDescription(SessionDescription.Type.OFFER, sdp);
-            pc.setRemoteDescription(new SdpAdapter() {
-                @Override
-                public void onSetSuccess() {
-                    pc.createAnswer(new SdpAdapter() {
-                        @Override
-                        public void onCreateSuccess(SessionDescription answer) {
-                            pc.setLocalDescription(new SdpAdapter(), answer);
-                            callback.onSignal(peerId, "answer", CollectionsUtil.mapOf(
-                                "type", answer.type.canonicalForm(),
-                                "sdp", answer.description
-                            ));
-                        }
-                    }, new MediaConstraints());
-                }
-            }, remote);
+            PeerConnection.SignalingState state = pc.signalingState();
+            if (state == PeerConnection.SignalingState.HAVE_REMOTE_OFFER) {
+                Log.w(TAG, "Ignoring duplicate remote offer from " + peerId);
+                return;
+            }
+            if (state == PeerConnection.SignalingState.HAVE_LOCAL_OFFER
+                || state == PeerConnection.SignalingState.HAVE_LOCAL_PRANSWER) {
+                Log.w(TAG, "Offer glare with " + peerId + ", rolling back local offer");
+                SessionDescription rollback = new SessionDescription(SessionDescription.Type.ROLLBACK, "");
+                pc.setLocalDescription(new SdpAdapter() {
+                    @Override
+                    public void onSetSuccess() {
+                        acceptRemoteOfferAndAnswer(pc, peerId, sdp);
+                    }
+                }, rollback);
+                return;
+            }
+            acceptRemoteOfferAndAnswer(pc, peerId, sdp);
         });
     }
 
@@ -134,6 +140,13 @@ public class NativeWebRtcManager {
         rtcExecutor.execute(() -> {
             PeerConnection pc = peerConnections.get(peerId);
             if (pc == null) return;
+            PeerConnection.SignalingState state = pc.signalingState();
+            if (state != PeerConnection.SignalingState.HAVE_LOCAL_OFFER
+                && state != PeerConnection.SignalingState.HAVE_REMOTE_PRANSWER) {
+                // Duplicate/out-of-order answers happen during retries/glare; safe to ignore.
+                Log.w(TAG, "Ignoring remote answer from " + peerId + " in state " + state);
+                return;
+            }
             String sdp = safeString(payload.get("sdp"));
             if (sdp == null) return;
             SessionDescription remote = new SessionDescription(SessionDescription.Type.ANSWER, sdp);
@@ -282,6 +295,25 @@ public class NativeWebRtcManager {
         peerConnections.put(peerId, pc);
         updateAndPublishPeerDiagnostics(peerId, safeState(pc.connectionState()), safeState(pc.iceConnectionState()));
         return pc;
+    }
+
+    private void acceptRemoteOfferAndAnswer(PeerConnection pc, String peerId, String sdp) {
+        SessionDescription remote = new SessionDescription(SessionDescription.Type.OFFER, sdp);
+        pc.setRemoteDescription(new SdpAdapter() {
+            @Override
+            public void onSetSuccess() {
+                pc.createAnswer(new SdpAdapter() {
+                    @Override
+                    public void onCreateSuccess(SessionDescription answer) {
+                        pc.setLocalDescription(new SdpAdapter(), answer);
+                        callback.onSignal(peerId, "answer", CollectionsUtil.mapOf(
+                            "type", answer.type.canonicalForm(),
+                            "sdp", answer.description
+                        ));
+                    }
+                }, new MediaConstraints());
+            }
+        }, remote);
     }
 
     private void collectStatsForAllPeers() {

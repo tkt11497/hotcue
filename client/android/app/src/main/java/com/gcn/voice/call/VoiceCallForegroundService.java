@@ -6,9 +6,11 @@ import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
 import android.media.AudioAttributes;
+import android.media.AudioManager;
 import android.media.RingtoneManager;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.ServiceInfo;
 import android.net.wifi.WifiManager;
 import android.net.Uri;
 import android.os.Build;
@@ -38,6 +40,7 @@ public class VoiceCallForegroundService extends Service {
     public static final String ACTION_START_CALL = "com.gcn.voice.call.START_CALL";
     public static final String ACTION_HANGUP = "com.gcn.voice.call.HANGUP";
     public static final String ACTION_TOGGLE_MUTE = "com.gcn.voice.call.TOGGLE_MUTE";
+    public static final String ACTION_TOGGLE_SPEAKER = "com.gcn.voice.call.TOGGLE_SPEAKER";
     public static final String ACTION_CALL_STATE_UPDATED = "com.gcn.voice.call.STATE_UPDATED";
 
     public static final String EXTRA_ROOM_ID = "roomId";
@@ -61,6 +64,7 @@ public class VoiceCallForegroundService extends Service {
     private NativeWebRtcManager webRtcManager;
     private PowerManager.WakeLock cpuWakeLock;
     private WifiManager.WifiLock wifiLock;
+    private AudioManager audioManager;
     private boolean foregroundStarted = false;
     private String currentRoomName = null;
     private boolean connectionIssueAlertSent = false;
@@ -72,7 +76,7 @@ public class VoiceCallForegroundService extends Service {
     public void onCreate() {
         super.onCreate();
         createNotificationChannel();
-        startForeground(NOTIFICATION_ID, buildBootstrapNotification());
+        startAsBootstrapForeground();
         foregroundStarted = true;
 
         PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
@@ -82,6 +86,7 @@ public class VoiceCallForegroundService extends Service {
         if (wm != null) {
             wifiLock = wm.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "GCNVoice::NativeCallWifi");
         }
+        audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
 
         webRtcManager = new NativeWebRtcManager(new NativeWebRtcManager.Callback() {
             @Override
@@ -150,6 +155,8 @@ public class VoiceCallForegroundService extends Service {
             }
         } else if (ACTION_TOGGLE_MUTE.equals(action)) {
             toggleMute();
+        } else if (ACTION_TOGGLE_SPEAKER.equals(action)) {
+            toggleSpeaker();
         } else if (ACTION_HANGUP.equals(action)) {
             hangup();
         }
@@ -173,7 +180,11 @@ public class VoiceCallForegroundService extends Service {
         callPhase = "signaling_ready";
         clearDisconnectAlertTasks();
         stateStore.beginCall(roomId, userId, username);
+        configureAudioForCall();
         acquireLocks();
+        if (!elevateForegroundForActiveCall()) {
+            return;
+        }
         updateForegroundNotification();
         callPhase = "rtc_connecting";
         signalingClient.joinRoom(roomId, userId, username);
@@ -245,12 +256,21 @@ public class VoiceCallForegroundService extends Service {
         publishState();
     }
 
+    private void toggleSpeaker() {
+        boolean nextSpeakerOn = !stateStore.isSpeakerOn();
+        stateStore.setSpeakerOn(nextSpeakerOn);
+        applySpeakerRoute(nextSpeakerOn);
+        updateForegroundNotification();
+        publishState();
+    }
+
     private void hangup() {
         clearDisconnectAlertTasks();
         callPhase = "idle";
         stateStore.endCall();
         if (signalingClient != null) signalingClient.leaveRoom();
         if (webRtcManager != null) webRtcManager.closeAll();
+        teardownAudioAfterCall();
         releaseLocks();
         if (foregroundStarted) {
             stopForeground(STOP_FOREGROUND_REMOVE);
@@ -309,9 +329,19 @@ public class VoiceCallForegroundService extends Service {
             PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
         );
 
+        Intent speakerIntent = new Intent(this, VoiceCallForegroundService.class);
+        speakerIntent.setAction(ACTION_TOGGLE_SPEAKER);
+        PendingIntent speakerPending = PendingIntent.getService(
+            this,
+            103,
+            speakerIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+        );
+
         CallStateStore.Snapshot snap = stateStore.snapshot();
         String roomLabel = currentRoomName == null ? "Voice call active" : "Room: " + currentRoomName;
         String muteLabel = snap.isMuted ? "Unmute" : "Mute";
+        String speakerLabel = snap.isSpeakerOn ? "Earpiece" : "Speaker";
 
         return new NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
@@ -321,6 +351,7 @@ public class VoiceCallForegroundService extends Service {
             .setOnlyAlertOnce(true)
             .setContentIntent(contentIntent)
             .addAction(0, muteLabel, mutePending)
+            .addAction(0, speakerLabel, speakerPending)
             .addAction(0, "Hang up", hangupPending)
             .setCategory(NotificationCompat.CATEGORY_CALL)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
@@ -359,6 +390,39 @@ public class VoiceCallForegroundService extends Service {
     private void updateForegroundNotification() {
         NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
         if (nm != null) nm.notify(NOTIFICATION_ID, buildNotification());
+    }
+
+    private void startAsBootstrapForeground() {
+        Notification bootstrap = buildBootstrapNotification();
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(NOTIFICATION_ID, bootstrap, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK);
+        } else {
+            startForeground(NOTIFICATION_ID, bootstrap);
+        }
+    }
+
+    private boolean elevateForegroundForActiveCall() {
+        Notification callNotification = buildNotification();
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(
+                    NOTIFICATION_ID,
+                    callNotification,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK | ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+                );
+            } else {
+                startForeground(NOTIFICATION_ID, callNotification);
+            }
+            return true;
+        } catch (SecurityException sec) {
+            // Android 14+/targetSdk 34+ can reject microphone FGS if runtime permission / eligibility is missing.
+            Log.e("VoiceCallService", "Unable to elevate to microphone foreground service", sec);
+            callPhase = "failed";
+            notifyConnectionIssue("Microphone permission required to start call");
+            publishState();
+            stopSelf();
+            return false;
+        }
     }
 
     private void notifyConnectionIssue(String message) {
@@ -454,6 +518,35 @@ public class VoiceCallForegroundService extends Service {
         }
     }
 
+    private void configureAudioForCall() {
+        if (audioManager == null) return;
+        try {
+            audioManager.setMode(AudioManager.MODE_IN_COMMUNICATION);
+            applySpeakerRoute(stateStore.isSpeakerOn());
+        } catch (Throwable t) {
+            Log.w("VoiceCallService", "Failed to configure audio route", t);
+        }
+    }
+
+    private void applySpeakerRoute(boolean speakerOn) {
+        if (audioManager == null) return;
+        try {
+            audioManager.setSpeakerphoneOn(speakerOn);
+        } catch (Throwable t) {
+            Log.w("VoiceCallService", "Failed to switch speaker route", t);
+        }
+    }
+
+    private void teardownAudioAfterCall() {
+        if (audioManager == null) return;
+        try {
+            audioManager.setSpeakerphoneOn(false);
+            audioManager.setMode(AudioManager.MODE_NORMAL);
+        } catch (Throwable t) {
+            Log.w("VoiceCallService", "Failed to restore audio route", t);
+        }
+    }
+
     private void publishState() {
         CallStateStore.Snapshot snap = stateStore.snapshot();
         try {
@@ -461,6 +554,7 @@ public class VoiceCallForegroundService extends Service {
             root.put("inCall", snap.inCall);
             root.put("connected", snap.connected);
             root.put("isMuted", snap.isMuted);
+            root.put("isSpeakerOn", snap.isSpeakerOn);
             root.put("roomId", snap.roomId == null ? JSONObject.NULL : snap.roomId);
             root.put("roomName", currentRoomName == null ? JSONObject.NULL : currentRoomName);
             root.put("myId", snap.myId == null ? JSONObject.NULL : snap.myId);
@@ -560,6 +654,7 @@ public class VoiceCallForegroundService extends Service {
         clearDisconnectAlertTasks();
         if (signalingClient != null) signalingClient.leaveRoom();
         if (webRtcManager != null) webRtcManager.closeAll();
+        teardownAudioAfterCall();
         releaseLocks();
         super.onDestroy();
     }

@@ -14,6 +14,7 @@ const props = defineProps<{
   myId: string;
   peerStates: Map<string, PeerState>;
   isMuted: boolean;
+  isSpeakerOn: boolean;
   socketConnected: boolean;
   socketId: string | null;
   micStream: MediaStream | null;
@@ -23,6 +24,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   "toggle-mute": [];
+  "toggle-speaker": [];
   leave: [];
 }>();
 
@@ -258,6 +260,24 @@ onUnmounted(() => {
           <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2c0 .76-.13 1.49-.35 2.17" />
           <line x1="12" y1="19" x2="12" y2="23" />
           <line x1="8" y1="23" x2="16" y2="23" />
+        </svg>
+      </button>
+
+      <button
+        class="ctrl-btn"
+        :class="isSpeakerOn ? 'speaker-on' : 'speaker-off'"
+        @click="emit('toggle-speaker')"
+        :title="isSpeakerOn ? 'Switch to earpiece' : 'Switch to speaker'"
+      >
+        <svg v-if="isSpeakerOn" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+          <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+          <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+        </svg>
+        <svg v-else width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+          <line x1="23" y1="9" x2="17" y2="15" />
+          <line x1="17" y1="9" x2="23" y2="15" />
         </svg>
       </button>
 
@@ -592,6 +612,24 @@ onUnmounted(() => {
 
 .ctrl-btn.danger:hover {
   background: rgba(231, 76, 60, 0.25);
+}
+
+.ctrl-btn.speaker-on {
+  background: rgba(52, 152, 219, 0.2);
+  color: #3498db;
+}
+
+.ctrl-btn.speaker-on:hover {
+  background: rgba(52, 152, 219, 0.3);
+}
+
+.ctrl-btn.speaker-off {
+  background: rgba(139, 143, 163, 0.2);
+  color: var(--text-muted);
+}
+
+.ctrl-btn.speaker-off:hover {
+  background: rgba(139, 143, 163, 0.3);
 }
 
 .ctrl-btn.disconnect {
