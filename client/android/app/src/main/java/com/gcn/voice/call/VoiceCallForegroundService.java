@@ -180,6 +180,7 @@ public class VoiceCallForegroundService extends Service {
         callPhase = "signaling_ready";
         clearDisconnectAlertTasks();
         stateStore.beginCall(roomId, userId, username);
+        webRtcManager.setLocalPeerId(userId);
         configureAudioForCall();
         acquireLocks();
         if (!elevateForegroundForActiveCall()) {

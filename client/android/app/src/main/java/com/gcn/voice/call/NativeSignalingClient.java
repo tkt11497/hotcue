@@ -8,6 +8,7 @@ import com.google.firebase.FirebaseApp;
 import com.google.firebase.FirebaseOptions;
 import com.google.firebase.Timestamp;
 import com.google.firebase.firestore.CollectionReference;
+import com.google.firebase.firestore.DocumentChange;
 import com.google.firebase.firestore.DocumentSnapshot;
 import com.google.firebase.firestore.EventListener;
 import com.google.firebase.firestore.FieldValue;
@@ -128,7 +129,9 @@ public class NativeSignalingClient {
                     return;
                 }
                 if (snap == null) return;
-                for (DocumentSnapshot doc : snap.getDocuments()) {
+                for (DocumentChange change : snap.getDocumentChanges()) {
+                    if (change.getType() != DocumentChange.Type.ADDED) continue;
+                    DocumentSnapshot doc = change.getDocument();
                     Object fromObj = doc.get("from");
                     Object typeObj = doc.get("type");
                     Object payloadObj = doc.get("payload");

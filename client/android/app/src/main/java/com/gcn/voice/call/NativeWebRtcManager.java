@@ -55,6 +55,7 @@ public class NativeWebRtcManager {
     private PeerConnectionFactory factory;
     private AudioSource localAudioSource;
     private AudioTrack localAudioTrack;
+    private String localPeerId;
 
     public NativeWebRtcManager(Callback callback) {
         this.callback = callback;
@@ -86,6 +87,10 @@ public class NativeWebRtcManager {
         if (localAudioTrack != null) {
             localAudioTrack.setEnabled(!muted);
         }
+    }
+
+    public void setLocalPeerId(String localPeerId) {
+        rtcExecutor.execute(() -> this.localPeerId = localPeerId);
     }
 
     public void createOffer(String peerId) {
@@ -122,7 +127,11 @@ public class NativeWebRtcManager {
             }
             if (state == PeerConnection.SignalingState.HAVE_LOCAL_OFFER
                 || state == PeerConnection.SignalingState.HAVE_LOCAL_PRANSWER) {
-                Log.w(TAG, "Offer glare with " + peerId + ", rolling back local offer");
+                if (!shouldAcceptCollidingOffer(peerId)) {
+                    Log.w(TAG, "Offer glare with " + peerId + ", keeping local offer (impolite)");
+                    return;
+                }
+                Log.w(TAG, "Offer glare with " + peerId + ", rolling back local offer (polite)");
                 SessionDescription rollback = new SessionDescription(SessionDescription.Type.ROLLBACK, "");
                 pc.setLocalDescription(new SdpAdapter() {
                     @Override
@@ -192,6 +201,7 @@ public class NativeWebRtcManager {
                 factory.dispose();
                 factory = null;
             }
+            localPeerId = null;
             peerDiagnostics.clear();
         });
         statsExecutor.shutdownNow();
@@ -412,6 +422,12 @@ public class NativeWebRtcManager {
         if (value instanceof Long) return ((Long) value).intValue();
         if (value instanceof Double) return ((Double) value).intValue();
         return null;
+    }
+
+    private boolean shouldAcceptCollidingOffer(String peerId) {
+        if (localPeerId == null || peerId == null) return true;
+        // Deterministic perfect-negotiation role: lexicographically larger id is polite.
+        return localPeerId.compareTo(peerId) > 0;
     }
 
     private static class SdpAdapter implements SdpObserver {
