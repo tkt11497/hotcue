@@ -58,6 +58,8 @@ public class VoiceCallForegroundService extends Service {
     private static final int NOTIFICATION_ID = 4101;
     private static final int ALERT_NOTIFICATION_ID = 4102;
     private static final long DISCONNECTED_ALERT_DELAY_MS = 8_000L;
+    private static final int MAX_PEER_RECOVERY_ATTEMPTS_BEFORE_REJOIN = 2;
+    private static final long ROOM_REJOIN_COOLDOWN_MS = 15_000L;
 
     private final CallStateStore stateStore = new CallStateStore();
     private NativeSignalingClient signalingClient;
@@ -67,10 +69,17 @@ public class VoiceCallForegroundService extends Service {
     private AudioManager audioManager;
     private boolean foregroundStarted = false;
     private String currentRoomName = null;
+    private String activeRoomId = null;
+    private String activeUserId = null;
+    private String activeUsername = null;
     private boolean connectionIssueAlertSent = false;
     private String callPhase = "idle";
+    private String recoveryState = "idle";
+    private boolean rejoinInProgress = false;
+    private long lastRoomRejoinEpochMs = 0L;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final Map<String, Runnable> disconnectAlertTasks = new HashMap<>();
+    private final Map<String, Integer> peerRecoveryFailures = new HashMap<>();
 
     @Override
     public void onCreate() {
@@ -96,6 +105,9 @@ public class VoiceCallForegroundService extends Service {
 
             @Override
             public void onPeerState(String peerId, NativeWebRtcManager.PeerDiagnostics diagnostics) {
+                if ("connected".equals(diagnostics.connectionState)) {
+                    peerRecoveryFailures.remove(peerId);
+                }
                 stateStore.upsertPeer(
                     new CallStateStore.PeerSnapshot(
                         peerId,
@@ -113,6 +125,21 @@ public class VoiceCallForegroundService extends Service {
                 if ("failed".equals(diagnostics.connectionState) || "closed".equals(diagnostics.connectionState)) {
                     notifyConnectionIssue("Connection issue detected in room " + (currentRoomName == null ? "voice call" : currentRoomName));
                 }
+            }
+
+            @Override
+            public void onRecoveryState(String peerId, String nextRecoveryState, String reason) {
+                recoveryState = nextRecoveryState == null || nextRecoveryState.isEmpty() ? "idle" : nextRecoveryState;
+                publishState();
+            }
+
+            @Override
+            public void onPeerRecoveryFailure(String peerId, int attempts, String reason) {
+                Log.w(
+                    "VoiceCallService",
+                    "Peer recovery failed for " + peerId + ", attempts=" + attempts + ", reason=" + reason
+                );
+                maybeRejoinRoomAfterRecoveryFailure(peerId, attempts, reason);
             }
 
             @Override
@@ -176,8 +203,14 @@ public class VoiceCallForegroundService extends Service {
             return;
         }
         currentRoomName = (roomName == null || roomName.isEmpty()) ? roomId : roomName;
+        activeRoomId = roomId;
+        activeUserId = userId;
+        activeUsername = username;
         connectionIssueAlertSent = false;
+        rejoinInProgress = false;
+        recoveryState = "idle";
         callPhase = "signaling_ready";
+        peerRecoveryFailures.clear();
         clearDisconnectAlertTasks();
         stateStore.beginCall(roomId, userId, username);
         webRtcManager.setLocalPeerId(userId);
@@ -268,6 +301,12 @@ public class VoiceCallForegroundService extends Service {
     private void hangup() {
         clearDisconnectAlertTasks();
         callPhase = "idle";
+        recoveryState = "idle";
+        rejoinInProgress = false;
+        peerRecoveryFailures.clear();
+        activeRoomId = null;
+        activeUserId = null;
+        activeUsername = null;
         stateStore.endCall();
         if (signalingClient != null) signalingClient.leaveRoom();
         if (webRtcManager != null) webRtcManager.closeAll();
@@ -501,6 +540,50 @@ public class VoiceCallForegroundService extends Service {
         disconnectAlertTasks.clear();
     }
 
+    private void maybeRejoinRoomAfterRecoveryFailure(String peerId, int attempts, String reason) {
+        int updatedAttempts = peerRecoveryFailures.containsKey(peerId) ? peerRecoveryFailures.get(peerId) + 1 : 1;
+        peerRecoveryFailures.put(peerId, Math.max(updatedAttempts, attempts));
+        if (peerRecoveryFailures.get(peerId) < MAX_PEER_RECOVERY_ATTEMPTS_BEFORE_REJOIN) return;
+        long now = System.currentTimeMillis();
+        if (rejoinInProgress) return;
+        if (now - lastRoomRejoinEpochMs < ROOM_REJOIN_COOLDOWN_MS) return;
+        if (activeRoomId == null || activeUserId == null || activeUsername == null) return;
+        if (signalingClient == null || webRtcManager == null) return;
+        rejoinInProgress = true;
+        lastRoomRejoinEpochMs = now;
+        callPhase = "rtc_connecting";
+        recoveryState = "room_rejoin";
+        publishState();
+        Log.w(
+            "VoiceCallService",
+            "Rejoining room after repeated recovery failure for " + peerId + ", reason=" + reason
+        );
+        mainHandler.post(this::performRoomRejoin);
+    }
+
+    private void performRoomRejoin() {
+        try {
+            if (activeRoomId == null || activeUserId == null || activeUsername == null) {
+                rejoinInProgress = false;
+                return;
+            }
+            if (signalingClient == null || webRtcManager == null) {
+                rejoinInProgress = false;
+                return;
+            }
+            signalingClient.leaveRoom();
+            webRtcManager.resetPeerConnections();
+            stateStore.beginCall(activeRoomId, activeUserId, activeUsername);
+            signalingClient.joinRoom(activeRoomId, activeUserId, activeUsername);
+            callPhase = "rtc_connecting";
+            publishState();
+        } catch (Throwable t) {
+            Log.e("VoiceCallService", "Room rejoin failed", t);
+        } finally {
+            rejoinInProgress = false;
+        }
+    }
+
     private void acquireLocks() {
         try {
             if (cpuWakeLock != null && !cpuWakeLock.isHeld()) cpuWakeLock.acquire(4 * 60 * 60 * 1000L);
@@ -562,6 +645,7 @@ public class VoiceCallForegroundService extends Service {
             root.put("myUsername", snap.myUsername == null ? JSONObject.NULL : snap.myUsername);
             root.put("startedAtEpochMs", snap.startedAtEpochMs);
             root.put("callPhase", callPhase);
+            root.put("recoveryState", recoveryState);
 
             JSONArray users = new JSONArray();
             for (CallStateStore.UserSnapshot u : snap.users) {

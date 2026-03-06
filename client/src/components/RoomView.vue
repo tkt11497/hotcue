@@ -10,6 +10,7 @@ const props = defineProps<{
   roomName: string;
   joiningPhase: boolean;
   callPhase: string;
+  recoveryState: string;
   users: readonly RoomUser[];
   myId: string;
   peerStates: Map<string, PeerState>;
@@ -297,6 +298,7 @@ onUnmounted(() => {
       :socket-connected="socketConnected"
       :socket-id="socketId"
       :room-id="roomId"
+      :recovery-state="recoveryState"
       :user-count="users.length"
       :mic-stream="micStream"
       :is-muted="isMuted"

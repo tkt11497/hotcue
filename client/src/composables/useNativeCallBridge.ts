@@ -24,6 +24,7 @@ export interface NativeCallState {
   isMuted: boolean;
   isSpeakerOn: boolean;
   callPhase: string;
+  recoveryState: string;
   roomId: string | null;
   roomName: string | null;
   myId: string | null;
@@ -68,6 +69,7 @@ const state = reactive<NativeCallState>({
   isMuted: false,
   isSpeakerOn: false,
   callPhase: "idle",
+  recoveryState: "idle",
   roomId: null,
   roomName: null,
   myId: null,
@@ -86,6 +88,7 @@ function applyState(next: NativeCallState) {
   state.isMuted = !!next.isMuted;
   state.isSpeakerOn = !!next.isSpeakerOn;
   state.callPhase = next.callPhase || "idle";
+  state.recoveryState = next.recoveryState || "idle";
   state.roomId = next.roomId ?? null;
   state.roomName = next.roomName ?? null;
   state.myId = next.myId ?? null;

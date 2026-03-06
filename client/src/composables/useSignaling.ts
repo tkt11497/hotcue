@@ -126,6 +126,7 @@ export function useSignaling() {
     users: readonly(users),
     myId: readonly(myId),
     callPhase: computed(() => nativeCall.state.callPhase || "idle"),
+    recoveryState: computed(() => nativeCall.state.recoveryState || "idle"),
     nativeReady: computed(() => nativeCall.ready.value),
     joinRoom,
     leaveRoom,

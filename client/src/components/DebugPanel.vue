@@ -6,6 +6,7 @@ const props = defineProps<{
   socketConnected: boolean;
   socketId: string | null;
   roomId: string | null;
+  recoveryState: string;
   userCount: number;
   micStream: MediaStream | null;
   isMuted: boolean;
@@ -54,6 +55,24 @@ const peerEntries = computed(() => {
     });
   }
   return entries;
+});
+
+const recoveryLabel = computed(() => {
+  switch (props.recoveryState) {
+    case "ice_restart":
+      return "ICE restart";
+    case "hard_reset":
+      return "Hard reset";
+    case "room_rejoin":
+      return "Room rejoin";
+    case "idle":
+    default:
+      return "Idle";
+  }
+});
+
+const recoveryClass = computed(() => {
+  return props.recoveryState === "idle" ? "ok" : "wait";
 });
 
 function playTestTone() {
@@ -112,6 +131,11 @@ onUnmounted(() => stopTestTone());
       <div class="step" :class="micStream ? 'ok' : 'fail'">
         <span class="dot" />
         <span><b>3. Microphone</b>: {{ micTrackInfo }} | Muted: {{ isMuted }}</span>
+      </div>
+
+      <div class="step" :class="recoveryClass">
+        <span class="dot" />
+        <span><b>Recovery</b>: {{ recoveryLabel }} <span class="mono">({{ recoveryState || "idle" }})</span></span>
       </div>
 
       <div v-if="peerEntries.length === 0" class="step wait">

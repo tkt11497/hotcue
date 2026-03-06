@@ -164,6 +164,7 @@ async function handleLeave() {
     :room-name="currentRoomName"
     :joining-phase="joining"
     :call-phase="signaling.callPhase.value"
+    :recovery-state="signaling.recoveryState.value"
     :users="signaling.users.value"
     :my-id="signaling.myId.value!"
     :peer-states="webrtc.peerStates"
