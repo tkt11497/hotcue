@@ -3,6 +3,8 @@ package com.gcn.voice.call;
 import android.content.Context;
 import android.util.Log;
 
+import org.json.JSONArray;
+import org.json.JSONObject;
 import org.webrtc.AudioSource;
 import org.webrtc.AudioTrack;
 import org.webrtc.IceCandidate;
@@ -17,6 +19,13 @@ import org.webrtc.RTCStatsReport;
 import org.webrtc.SdpObserver;
 import org.webrtc.SessionDescription;
 
+import java.io.BufferedReader;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -44,23 +53,32 @@ public class NativeWebRtcManager {
     }
 
     private static final String TAG = "NativeWebRtc";
+    private static final String CLOUDFLARE_TURN_KEY_ID = "f722e547eeec974871f4e1d371fad2b2";
+    private static final String CLOUDFLARE_TURN_API_TOKEN = "303e3cbb923f4a731454838c87f961299a1a766ce915c96fad0128c97d5afad9";
+    private static final long TURN_CREDENTIAL_TTL_SECONDS = 86_400L;
+    private static final long TURN_CACHE_SAFETY_SECONDS = 300L;
+    private static final long TURN_RETRY_INTERVAL_MS = 30_000L;
+    private static final String CLOUDFLARE_TURN_URL =
+        "https://rtc.live.cloudflare.com/v1/turn/keys/%s/credentials/generate";
 
     private final Callback callback;
     private final ExecutorService rtcExecutor = Executors.newSingleThreadExecutor();
     private final ScheduledExecutorService statsExecutor = Executors.newSingleThreadScheduledExecutor();
     private final Map<String, PeerConnection> peerConnections = new HashMap<>();
     private final Map<String, PeerDiagnostics> peerDiagnostics = new HashMap<>();
+    private final Map<String, String> peerSelectedRouteLogs = new HashMap<>();
     private final List<PeerConnection.IceServer> iceServers = new ArrayList<>();
 
     private PeerConnectionFactory factory;
     private AudioSource localAudioSource;
     private AudioTrack localAudioTrack;
     private String localPeerId;
+    private long turnCacheExpiryEpochMs = 0L;
+    private long turnLastAttemptEpochMs = 0L;
 
     public NativeWebRtcManager(Callback callback) {
         this.callback = callback;
-        this.iceServers.add(PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer());
-        this.iceServers.add(PeerConnection.IceServer.builder("stun:stun1.l.google.com:19302").createIceServer());
+        resetIceServersToStunOnly();
     }
 
     public void initialize(Context context) {
@@ -180,6 +198,7 @@ public class NativeWebRtcManager {
             PeerConnection pc = peerConnections.remove(peerId);
             if (pc != null) pc.close();
             peerDiagnostics.remove(peerId);
+            peerSelectedRouteLogs.remove(peerId);
         });
     }
 
@@ -203,6 +222,7 @@ public class NativeWebRtcManager {
             }
             localPeerId = null;
             peerDiagnostics.clear();
+            peerSelectedRouteLogs.clear();
         });
         statsExecutor.shutdownNow();
     }
@@ -215,6 +235,7 @@ public class NativeWebRtcManager {
             return null;
         }
 
+        updateIceServersIfNeeded();
         PeerConnection.RTCConfiguration rtcConfig = new PeerConnection.RTCConfiguration(iceServers);
         PeerConnection pc = factory.createPeerConnection(rtcConfig, new PeerConnection.Observer() {
             @Override
@@ -227,15 +248,19 @@ public class NativeWebRtcManager {
                     case CONNECTED:
                     case COMPLETED:
                         connectionState = "connected";
+                        Log.i(TAG, "Peer " + peerId + " ICE connected (" + iceConnectionState + ")");
                         break;
                     case FAILED:
                         connectionState = "failed";
+                        Log.w(TAG, "Peer " + peerId + " ICE failed");
                         break;
                     case DISCONNECTED:
                         connectionState = "disconnected";
+                        Log.w(TAG, "Peer " + peerId + " ICE disconnected");
                         break;
                     case CLOSED:
                         connectionState = "closed";
+                        Log.i(TAG, "Peer " + peerId + " ICE closed");
                         break;
                     case NEW:
                     case CHECKING:
@@ -339,6 +364,8 @@ public class NativeWebRtcManager {
                         int rttMs = -1;
                         int jitterMs = -1;
                         int packetsLost = 0;
+                        String selectedLocalCandidateId = null;
+                        String selectedRemoteCandidateId = null;
                         for (RTCStats stat : report.getStatsMap().values()) {
                             if (stat == null) continue;
                             String type = stat.getType();
@@ -350,6 +377,15 @@ public class NativeWebRtcManager {
                                     if (rtt instanceof Number) {
                                         rttMs = (int) Math.round(((Number) rtt).doubleValue() * 1000.0);
                                     }
+                                }
+                                boolean selected = false;
+                                Object selectedObj = members.get("selected");
+                                Object nominatedObj = members.get("nominated");
+                                if (selectedObj instanceof Boolean && (Boolean) selectedObj) selected = true;
+                                if (nominatedObj instanceof Boolean && (Boolean) nominatedObj) selected = true;
+                                if (selected || "succeeded".equals(String.valueOf(state))) {
+                                    selectedLocalCandidateId = safeString(members.get("localCandidateId"));
+                                    selectedRemoteCandidateId = safeString(members.get("remoteCandidateId"));
                                 }
                             } else if ("inbound-rtp".equals(type)) {
                                 Object kind = members.get("kind");
@@ -366,6 +402,7 @@ public class NativeWebRtcManager {
                                 }
                             }
                         }
+                        maybeLogSelectedRoute(peerId, report, selectedLocalCandidateId, selectedRemoteCandidateId);
                         diag.rttMs = rttMs;
                         diag.jitterMs = jitterMs;
                         diag.packetsLost = packetsLost;
@@ -428,6 +465,184 @@ public class NativeWebRtcManager {
         if (localPeerId == null || peerId == null) return true;
         // Deterministic perfect-negotiation role: lexicographically larger id is polite.
         return localPeerId.compareTo(peerId) > 0;
+    }
+
+    private void updateIceServersIfNeeded() {
+        long now = System.currentTimeMillis();
+        if (hasTurnServerConfigured() && now < turnCacheExpiryEpochMs) {
+            return;
+        }
+        if (now - turnLastAttemptEpochMs < TURN_RETRY_INTERVAL_MS) {
+            return;
+        }
+        turnLastAttemptEpochMs = now;
+
+        List<PeerConnection.IceServer> turnServers = fetchTurnCredentials();
+        resetIceServersToStunOnly();
+        if (!turnServers.isEmpty()) {
+            iceServers.addAll(turnServers);
+            turnCacheExpiryEpochMs = now + Math.max(0L, (TURN_CREDENTIAL_TTL_SECONDS - TURN_CACHE_SAFETY_SECONDS) * 1000L);
+            Log.i(
+                TAG,
+                "Cloudflare TURN credentials loaded, ttl(s)=" + (TURN_CREDENTIAL_TTL_SECONDS - TURN_CACHE_SAFETY_SECONDS)
+            );
+        } else {
+            turnCacheExpiryEpochMs = 0L;
+            Log.w(TAG, "Cloudflare TURN unavailable, using STUN only");
+        }
+    }
+
+    private List<PeerConnection.IceServer> fetchTurnCredentials() {
+        HttpURLConnection conn = null;
+        try {
+            String endpoint = String.format(CLOUDFLARE_TURN_URL, CLOUDFLARE_TURN_KEY_ID);
+            conn = (HttpURLConnection) new URL(endpoint).openConnection();
+            conn.setRequestMethod("POST");
+            conn.setConnectTimeout(8_000);
+            conn.setReadTimeout(8_000);
+            conn.setDoOutput(true);
+            conn.setRequestProperty("Authorization", "Bearer " + CLOUDFLARE_TURN_API_TOKEN);
+            conn.setRequestProperty("Content-Type", "application/json");
+
+            String body = "{\"ttl\":" + TURN_CREDENTIAL_TTL_SECONDS + "}";
+            try (OutputStream out = conn.getOutputStream()) {
+                out.write(body.getBytes(StandardCharsets.UTF_8));
+            }
+
+            int status = conn.getResponseCode();
+            InputStream stream = (status >= 200 && status < 300) ? conn.getInputStream() : conn.getErrorStream();
+            String response = readAll(stream);
+            if (status < 200 || status >= 300) {
+                Log.w(TAG, "Cloudflare TURN fetch failed: HTTP " + status + " body=" + response);
+                return new ArrayList<>();
+            }
+
+            JSONObject data = new JSONObject(response);
+            Object iceServersObj = data.opt("iceServers");
+            if (iceServersObj == null) {
+                JSONObject resultObj = data.optJSONObject("result");
+                if (resultObj != null) {
+                    iceServersObj = resultObj.opt("iceServers");
+                }
+            }
+            List<PeerConnection.IceServer> parsed = parseIceServers(iceServersObj);
+            if (parsed.isEmpty()) {
+                Log.w(
+                    TAG,
+                    "Cloudflare TURN fetch returned no usable ICE servers, top-level keys="
+                        + data.names()
+                );
+            }
+            return parsed;
+        } catch (Throwable t) {
+            Log.w(TAG, "Cloudflare TURN fetch exception", t);
+            return new ArrayList<>();
+        } finally {
+            if (conn != null) conn.disconnect();
+        }
+    }
+
+    private List<PeerConnection.IceServer> parseIceServers(Object iceServersObj) {
+        List<PeerConnection.IceServer> out = new ArrayList<>();
+        if (iceServersObj instanceof JSONObject) {
+            PeerConnection.IceServer server = parseIceServer((JSONObject) iceServersObj);
+            if (server != null) out.add(server);
+            return out;
+        }
+        if (iceServersObj instanceof JSONArray) {
+            JSONArray arr = (JSONArray) iceServersObj;
+            for (int i = 0; i < arr.length(); i++) {
+                JSONObject item = arr.optJSONObject(i);
+                if (item == null) continue;
+                PeerConnection.IceServer server = parseIceServer(item);
+                if (server != null) out.add(server);
+            }
+        }
+        return out;
+    }
+
+    private PeerConnection.IceServer parseIceServer(JSONObject serverObj) {
+        List<String> urls = new ArrayList<>();
+        Object urlsObj = serverObj.opt("urls");
+        if (urlsObj instanceof String) {
+            urls.add((String) urlsObj);
+        } else if (urlsObj instanceof JSONArray) {
+            JSONArray arr = (JSONArray) urlsObj;
+            for (int i = 0; i < arr.length(); i++) {
+                String url = arr.optString(i, null);
+                if (url != null && !url.isEmpty()) urls.add(url);
+            }
+        }
+        if (urls.isEmpty()) return null;
+
+        PeerConnection.IceServer.Builder builder = PeerConnection.IceServer.builder(urls);
+        String username = serverObj.optString("username", "");
+        String credential = serverObj.optString("credential", "");
+        if (!username.isEmpty()) builder.setUsername(username);
+        if (!credential.isEmpty()) builder.setPassword(credential);
+        return builder.createIceServer();
+    }
+
+    private boolean hasTurnServerConfigured() {
+        for (PeerConnection.IceServer s : iceServers) {
+            if (s == null || s.urls == null) continue;
+            for (String url : s.urls) {
+                if (url != null && (url.startsWith("turn:") || url.startsWith("turns:"))) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private void resetIceServersToStunOnly() {
+        iceServers.clear();
+        iceServers.add(PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer());
+        iceServers.add(PeerConnection.IceServer.builder("stun:stun1.l.google.com:19302").createIceServer());
+    }
+
+    private void maybeLogSelectedRoute(
+        String peerId,
+        RTCStatsReport report,
+        String localCandidateId,
+        String remoteCandidateId
+    ) {
+        if (localCandidateId == null && remoteCandidateId == null) return;
+        RTCStats local = localCandidateId == null ? null : report.getStatsMap().get(localCandidateId);
+        RTCStats remote = remoteCandidateId == null ? null : report.getStatsMap().get(remoteCandidateId);
+        String localType = candidateType(local);
+        String remoteType = candidateType(remote);
+        String route = "local=" + localType + ", remote=" + remoteType;
+        String previous = peerSelectedRouteLogs.get(peerId);
+        if (route.equals(previous)) return;
+        peerSelectedRouteLogs.put(peerId, route);
+        boolean relayInUse = "relay".equals(localType) || "relay".equals(remoteType);
+        Log.i(
+            TAG,
+            "Peer " + peerId + " selected route: " + route + (relayInUse ? " (TURN relay)" : " (direct)")
+        );
+    }
+
+    private String candidateType(RTCStats stat) {
+        if (stat == null) return "unknown";
+        Map<String, Object> members = stat.getMembers();
+        if (members == null) return "unknown";
+        String candidateType = safeString(members.get("candidateType"));
+        if (candidateType == null) candidateType = safeString(members.get("type"));
+        if (candidateType == null || candidateType.isEmpty()) return "unknown";
+        return candidateType;
+    }
+
+    private String readAll(InputStream stream) throws Exception {
+        if (stream == null) return "";
+        StringBuilder out = new StringBuilder();
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                out.append(line);
+            }
+        }
+        return out.toString();
     }
 
     private static class SdpAdapter implements SdpObserver {
