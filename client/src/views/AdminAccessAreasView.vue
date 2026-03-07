@@ -89,24 +89,43 @@ async function deleteArea(id: string) {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 24px;
-  max-width: 500px;
+  max-width: 600px;
+  box-shadow: 0 0 20px rgba(0, 0, 0, 0.4);
+}
+
+@media (max-width: 768px) {
+  .admin-access-areas {
+    padding: 16px;
+    max-width: 100%;
+  }
 }
 
 h2 {
-  font-size: 1.2rem;
+  font-family: "Rajdhani", sans-serif;
+  font-size: 1.6rem;
   margin-bottom: 4px;
+  color: var(--primary);
+  text-shadow: 0 0 10px var(--primary-glow);
+  text-transform: uppercase;
+  letter-spacing: 1px;
 }
 
 .desc {
   color: var(--text-muted);
-  font-size: 0.85rem;
-  margin-bottom: 16px;
+  font-size: 0.95rem;
+  margin-bottom: 20px;
 }
 
 .create-form {
   display: flex;
-  gap: 8px;
-  margin-bottom: 16px;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+@media (max-width: 480px) {
+  .create-form {
+    flex-direction: column;
+  }
 }
 
 .input {
@@ -114,73 +133,97 @@ h2 {
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  padding: 8px 12px;
-  font-size: 0.9rem;
+  padding: 10px 14px;
+  font-family: "Outfit", sans-serif;
+  font-size: 1rem;
   color: var(--text);
   outline: none;
+  transition: all 0.2s;
 }
 
 .input:focus {
   border-color: var(--primary);
+  box-shadow: 0 0 10px var(--primary-glow);
 }
 
 .input::placeholder {
   color: var(--text-muted);
-  opacity: 0.6;
+  opacity: 0.5;
 }
 
 .btn-sm {
   background: var(--primary);
-  color: white;
-  border: none;
+  color: #000;
+  border: 1px solid var(--primary);
   border-radius: var(--radius-sm);
-  padding: 8px 16px;
-  font-size: 0.85rem;
-  font-weight: 600;
+  padding: 10px 20px;
+  font-family: "Rajdhani", sans-serif;
+  font-size: 1rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
   cursor: pointer;
-  transition: background 0.2s;
+  transition: all 0.2s;
   white-space: nowrap;
 }
 
 .btn-sm:hover:not(:disabled) {
-  background: var(--primary-hover);
+  background: #00e67a;
+  box-shadow: 0 0 15px var(--primary-glow);
+  transform: translateY(-2px);
 }
 
 .btn-sm:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+  background: var(--surface);
+  color: var(--text-muted);
+  border-color: var(--border);
+  box-shadow: none;
+  transform: none;
 }
 
 .loading,
 .empty {
   color: var(--text-muted);
-  font-size: 0.85rem;
-  padding: 16px 0;
+  font-family: "Rajdhani", sans-serif;
+  font-size: 1.1rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  padding: 24px 0;
   text-align: center;
 }
 
 .area-list {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 10px;
 }
 
 .area-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 12px;
+  padding: 14px 16px;
+  background: var(--bg);
+  border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   transition: all 0.2s;
 }
 
 .area-row:hover {
-  background: var(--surface-hover);
+  background: rgba(0, 255, 136, 0.05);
+  border-color: var(--primary);
+  box-shadow: 0 0 10px var(--primary-glow);
+  transform: translateY(-2px);
 }
 
 .area-name {
-  font-weight: 600;
-  font-size: 0.9rem;
+  font-family: "Rajdhani", sans-serif;
+  font-weight: 700;
+  font-size: 1.15rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .btn-delete {
@@ -188,7 +231,7 @@ h2 {
   border: none;
   color: var(--text-muted);
   cursor: pointer;
-  padding: 4px;
+  padding: 6px;
   border-radius: 4px;
   transition: all 0.2s;
   display: flex;
@@ -196,6 +239,7 @@ h2 {
 
 .btn-delete:hover {
   color: var(--danger);
-  background: rgba(231, 76, 60, 0.1);
+  background: rgba(255, 0, 85, 0.1);
+  box-shadow: 0 0 10px var(--danger-glow);
 }
 </style>

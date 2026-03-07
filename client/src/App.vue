@@ -76,19 +76,22 @@ async function handleLogout() {
 }
 
 :root {
-  --bg: #0f1117;
-  --surface: #1a1d27;
-  --surface-hover: #242836;
-  --border: #2a2e3d;
-  --text: #e4e6ed;
-  --text-muted: #8b8fa3;
-  --primary: #6c5ce7;
-  --primary-hover: #7c6ff7;
-  --danger: #e74c3c;
-  --danger-hover: #c0392b;
-  --success: #2ecc71;
-  --radius: 12px;
-  --radius-sm: 8px;
+  --bg: #0b0c10;
+  --surface: #18181b;
+  --surface-hover: #27272a;
+  --border: #27272a;
+  --border-neon: rgba(0, 255, 136, 0.3);
+  --text: #f4f4f5;
+  --text-muted: #a1a1aa;
+  --primary: #00ff88;
+  --primary-hover: #00e67a;
+  --primary-glow: rgba(0, 255, 136, 0.4);
+  --danger: #ff0055;
+  --danger-hover: #e6004c;
+  --danger-glow: rgba(255, 0, 85, 0.4);
+  --success: #00ff88;
+  --radius: 8px;
+  --radius-sm: 4px;
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --safe-left: env(safe-area-inset-left, 0px);
@@ -96,10 +99,16 @@ async function handleLogout() {
 }
 
 body {
-  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: "Outfit", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   background: var(--bg);
   color: var(--text);
   min-height: 100vh;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: "Rajdhani", sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 #app {
@@ -116,10 +125,7 @@ body {
   padding-bottom: var(--safe-bottom);
   padding-left: var(--safe-left);
   padding-right: var(--safe-right);
-  background:
-    radial-gradient(circle at 0% 0%, rgba(83, 131, 236, 0.25), transparent 40%),
-    radial-gradient(circle at 100% 100%, rgba(108, 92, 231, 0.25), transparent 40%),
-    var(--bg);
+  background: var(--bg);
 }
 
 .loading-screen {
@@ -128,6 +134,10 @@ body {
   align-items: center;
   justify-content: center;
   color: var(--text-muted);
+  font-family: "Rajdhani", sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  font-size: 1.2rem;
 }
 
 .app-header {
@@ -135,10 +145,10 @@ body {
   align-items: center;
   justify-content: space-between;
   padding: 14px 24px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(26, 29, 39, 0.85);
+  border-bottom: 1px solid var(--border);
+  background: rgba(24, 24, 27, 0.85);
   backdrop-filter: blur(12px);
-  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.25);
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.5);
   gap: 16px;
   flex-wrap: wrap;
   position: sticky;
@@ -175,55 +185,65 @@ body {
   width: 44px;
   height: 44px;
   object-fit: contain;
-  border-radius: 10px;
-  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.3);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 0 15px var(--primary-glow);
 }
 
 .brand-copy {
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 0;
 }
 
 .brand-copy h1 {
-  font-size: 1.1rem;
+  font-size: 1.3rem;
   font-weight: 700;
-  letter-spacing: -0.3px;
+  letter-spacing: 1px;
+  margin: 0;
+  text-shadow: 0 0 10px rgba(255, 255, 255, 0.2);
 }
 
 .brand-copy p {
-  font-size: 0.74rem;
-  color: var(--text-muted);
-  letter-spacing: 0.3px;
+  font-size: 0.7rem;
+  color: var(--primary);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  font-family: "Rajdhani", sans-serif;
+  font-weight: 600;
 }
 
 .nav-links {
   display: flex;
-  gap: 4px;
+  gap: 8px;
 }
 
 .nav-link {
   color: var(--text-muted);
   text-decoration: none;
-  font-size: 0.85rem;
+  font-size: 0.9rem;
+  font-family: "Rajdhani", sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 1px;
   font-weight: 600;
-  padding: 8px 14px;
+  padding: 8px 16px;
   border-radius: var(--radius-sm);
   transition: all 0.2s ease;
   border: 1px solid transparent;
+  position: relative;
+  overflow: hidden;
 }
 
 .nav-link:hover {
   color: var(--text);
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.03);
   border-color: rgba(255, 255, 255, 0.08);
-  transform: translateY(-1px);
 }
 
 .nav-link.router-link-active {
-  color: #fff;
-  background: linear-gradient(135deg, var(--primary), #4a7cff);
-  box-shadow: 0 10px 20px rgba(108, 92, 231, 0.35);
+  color: #000;
+  background: var(--primary);
+  border-color: var(--primary);
+  box-shadow: 0 0 15px var(--primary-glow);
 }
 
 .user-info {
@@ -231,66 +251,73 @@ body {
   color: var(--text-muted);
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
 }
 
 .role-badge {
-  font-size: 0.7rem;
+  font-family: "Rajdhani", sans-serif;
+  font-size: 0.75rem;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
-  padding: 2px 8px;
-  border-radius: 10px;
-  background: rgba(108, 92, 231, 0.15);
+  letter-spacing: 1px;
+  padding: 2px 10px;
+  border-radius: var(--radius-sm);
+  background: rgba(0, 255, 136, 0.15);
   color: var(--primary);
+  border: 1px solid var(--primary-glow);
 }
 
 .role-badge.admin {
-  background: rgba(231, 76, 60, 0.15);
-  color: #e74c3c;
+  background: rgba(255, 0, 85, 0.15);
+  color: var(--danger);
+  border-color: var(--danger-glow);
 }
 
 .role-badge.holding_admin {
   background: rgba(243, 156, 18, 0.15);
   color: #f39c12;
+  border-color: rgba(243, 156, 18, 0.3);
 }
 
 .role-badge.room_admin {
   background: rgba(52, 152, 219, 0.15);
   color: #3498db;
+  border-color: rgba(52, 152, 219, 0.3);
 }
 
 .role-badge.member {
-  background: rgba(46, 204, 113, 0.15);
-  color: #2ecc71;
+  background: rgba(0, 255, 136, 0.15);
+  color: var(--success);
+  border-color: var(--primary-glow);
 }
 
-.role-badge.security_admin {
+.role-badge.security_admin,
+.role-badge.security {
   background: rgba(155, 89, 182, 0.15);
   color: #9b59b6;
-}
-
-.role-badge.security {
-  background: rgba(142, 68, 173, 0.15);
-  color: #8e44ad;
+  border-color: rgba(155, 89, 182, 0.3);
 }
 
 .btn-logout {
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid rgba(255, 255, 255, 0.1);
   color: var(--text-muted);
-  padding: 8px 14px;
+  padding: 8px 16px;
   border-radius: var(--radius-sm);
-  font-size: 0.8rem;
+  font-size: 0.85rem;
+  font-family: "Rajdhani", sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 1px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .btn-logout:hover {
-  color: #fff;
-  border-color: rgba(231, 76, 60, 0.7);
-  background: rgba(231, 76, 60, 0.2);
+  color: var(--danger);
+  border-color: var(--danger);
+  background: rgba(255, 0, 85, 0.1);
+  box-shadow: 0 0 15px var(--danger-glow);
 }
 
 .app-main {
@@ -305,38 +332,38 @@ body {
 
 .bg-orb {
   position: fixed;
-  border-radius: 999px;
+  border-radius: 50%;
   pointer-events: none;
-  filter: blur(50px);
-  opacity: 0.45;
+  filter: blur(80px);
+  opacity: 0.25;
   z-index: 0;
 }
 
 .orb-a {
-  width: 280px;
-  height: 280px;
-  left: -90px;
+  width: 400px;
+  height: 400px;
+  left: -150px;
   top: 10vh;
-  background: rgba(71, 132, 252, 0.4);
+  background: var(--primary);
 }
 
 .orb-b {
-  width: 260px;
-  height: 260px;
+  width: 300px;
+  height: 300px;
   right: -100px;
   bottom: 8vh;
-  background: rgba(109, 217, 128, 0.28);
+  background: var(--danger);
 }
 
 .bg-grid {
   position: fixed;
   inset: 0;
   background-image:
-    linear-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.04) 1px, transparent 1px);
-  background-size: 42px 42px;
-  mask-image: radial-gradient(circle at center, black 20%, transparent 75%);
-  opacity: 0.2;
+    linear-gradient(rgba(0, 255, 136, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 255, 136, 0.03) 1px, transparent 1px);
+  background-size: 30px 30px;
+  mask-image: radial-gradient(circle at center, black 30%, transparent 80%);
+  opacity: 1;
   pointer-events: none;
   z-index: 0;
 }

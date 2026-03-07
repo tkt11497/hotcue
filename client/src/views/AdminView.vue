@@ -47,34 +47,68 @@
 .admin-layout {
   display: flex;
   width: 100%;
-  max-width: 1100px;
+  max-width: 1200px;
   min-height: 70vh;
   gap: 24px;
   align-self: flex-start;
 }
 
+@media (max-width: 768px) {
+  .admin-layout {
+    flex-direction: column;
+    gap: 16px;
+  }
+}
+
 .admin-sidebar {
-  width: 200px;
+  width: 220px;
   flex-shrink: 0;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 20px 16px;
+  box-shadow: 0 0 20px rgba(0, 0, 0, 0.4);
+  position: relative;
+  overflow: hidden;
+}
+
+@media (max-width: 768px) {
+  .admin-sidebar {
+    width: 100%;
+    padding: 16px;
+  }
+}
+
+.admin-sidebar::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0; height: 2px;
+  background: var(--primary);
+  box-shadow: 0 0 10px var(--primary-glow);
 }
 
 .admin-sidebar h3 {
-  font-size: 0.8rem;
+  font-family: "Rajdhani", sans-serif;
+  font-size: 1rem;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: var(--text-muted);
+  letter-spacing: 1px;
+  color: var(--primary);
   margin-bottom: 16px;
+  text-shadow: 0 0 5px var(--primary-glow);
 }
 
 .admin-nav {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
+}
+
+@media (max-width: 768px) {
+  .admin-nav {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
 }
 
 .admin-nav-link {
@@ -85,23 +119,39 @@
   border-radius: var(--radius-sm);
   color: var(--text-muted);
   text-decoration: none;
-  font-size: 0.9rem;
+  font-family: "Rajdhani", sans-serif;
+  font-size: 1.05rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
   font-weight: 600;
   transition: all 0.2s;
+  border: 1px solid transparent;
+}
+
+@media (max-width: 768px) {
+  .admin-nav-link {
+    flex: 1;
+    min-width: 140px;
+    justify-content: center;
+  }
 }
 
 .admin-nav-link:hover {
   color: var(--text);
-  background: var(--surface-hover);
+  background: rgba(255, 255, 255, 0.03);
+  border-color: rgba(255, 255, 255, 0.08);
 }
 
 .admin-nav-link.router-link-active {
-  color: var(--primary);
-  background: rgba(108, 92, 231, 0.1);
+  color: #000;
+  background: var(--primary);
+  border-color: var(--primary);
+  box-shadow: 0 0 15px var(--primary-glow);
 }
 
 .admin-content {
   flex: 1;
   min-width: 0;
+  width: 100%;
 }
 </style>

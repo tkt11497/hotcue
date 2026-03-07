@@ -270,38 +270,40 @@ const roleNeedsRoom = (role: string) => role === "room_admin" || role === "membe
 
     <div v-if="loading" class="loading">Loading users...</div>
 
-    <table v-else class="data-table">
-      <thead>
-        <tr>
-          <th></th>
-          <th>Name</th>
-          <th>Company</th>
-          <th>Department</th>
-          <th>Assigned Room</th>
-          <th>Access Areas</th>
-          <th>Role</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr v-for="u in users" :key="u.uid" class="clickable-row" @click="goToUser(u.uid)">
-          <td class="avatar-cell">
-            <img v-if="u.photoURL" :src="u.photoURL" class="avatar" />
-            <div v-else class="avatar-placeholder">{{ u.displayName.charAt(0).toUpperCase() }}</div>
-          </td>
-          <td>
-            <div class="user-name">{{ u.displayName }}</div>
-            <div class="muted">{{ u.email }}</div>
-          </td>
-          <td><span class="muted">{{ u.company || "—" }}</span></td>
-          <td><span class="muted">{{ u.department ? getDeptName(u.department) : "—" }}</span></td>
-          <td><span class="muted">{{ u.assignedRoom ? getRoomName(u.assignedRoom) : "—" }}</span></td>
-          <td><span class="muted area-list">{{ getAreaNames(u.accessAreas || []) }}</span></td>
-          <td>
-            <span class="role-tag" :class="u.role">{{ u.role.replace("_", " ") }}</span>
-          </td>
-        </tr>
-      </tbody>
-    </table>
+    <div v-else class="table-responsive">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th></th>
+            <th>Name</th>
+            <th>Company</th>
+            <th>Department</th>
+            <th>Assigned Room</th>
+            <th>Access Areas</th>
+            <th>Role</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="u in users" :key="u.uid" class="clickable-row" @click="goToUser(u.uid)">
+            <td class="avatar-cell">
+              <img v-if="u.photoURL" :src="u.photoURL" class="avatar" />
+              <div v-else class="avatar-placeholder">{{ u.displayName.charAt(0).toUpperCase() }}</div>
+            </td>
+            <td>
+              <div class="user-name">{{ u.displayName }}</div>
+              <div class="muted">{{ u.email }}</div>
+            </td>
+            <td><span class="muted">{{ u.company || "—" }}</span></td>
+            <td><span class="muted">{{ u.department ? getDeptName(u.department) : "—" }}</span></td>
+            <td><span class="muted">{{ u.assignedRoom ? getRoomName(u.assignedRoom) : "—" }}</span></td>
+            <td><span class="muted area-list">{{ getAreaNames(u.accessAreas || []) }}</span></td>
+            <td>
+              <span class="role-tag" :class="u.role">{{ u.role.replace("_", " ") }}</span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
   </div>
 </template>
 
@@ -311,6 +313,13 @@ const roleNeedsRoom = (role: string) => role === "room_admin" || role === "membe
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 24px;
+  box-shadow: 0 0 20px rgba(0, 0, 0, 0.4);
+}
+
+@media (max-width: 768px) {
+  .admin-users {
+    padding: 16px;
+  }
 }
 
 .section-header {
@@ -318,25 +327,48 @@ const roleNeedsRoom = (role: string) => role === "room_admin" || role === "membe
   align-items: flex-start;
   justify-content: space-between;
   margin-bottom: 20px;
+  flex-wrap: wrap;
+  gap: 12px;
 }
 
-h2 { font-size: 1.2rem; margin-bottom: 4px; }
-h3 { font-size: 1rem; margin-bottom: 16px; }
+h2 {
+  font-family: "Rajdhani", sans-serif;
+  font-size: 1.6rem;
+  margin-bottom: 4px;
+  color: var(--primary);
+  text-shadow: 0 0 10px var(--primary-glow);
+}
 
-.desc { color: var(--text-muted); font-size: 0.85rem; }
+h3 {
+  font-family: "Rajdhani", sans-serif;
+  font-size: 1.2rem;
+  margin-bottom: 16px;
+  color: var(--text);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.desc { color: var(--text-muted); font-size: 0.9rem; }
 
 .create-panel {
   background: var(--bg);
-  border: 1px solid var(--border);
+  border: 1px solid var(--primary);
   border-radius: var(--radius-sm);
   padding: 20px;
   margin-bottom: 20px;
+  box-shadow: 0 0 15px rgba(0, 255, 136, 0.1);
 }
 
 .create-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 12px;
+  gap: 16px;
+}
+
+@media (max-width: 768px) {
+  .create-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .form-actions {
@@ -345,43 +377,51 @@ h3 { font-size: 1rem; margin-bottom: 16px; }
   flex-direction: column;
   gap: 8px;
   align-items: flex-start;
+  margin-top: 8px;
 }
 
-.field { display: flex; flex-direction: column; gap: 4px; }
+.field { display: flex; flex-direction: column; gap: 6px; }
 
 .field label {
-  font-size: 0.75rem;
+  font-family: "Rajdhani", sans-serif;
+  font-size: 0.85rem;
   font-weight: 600;
   color: var(--text-muted);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 1px;
 }
 
 .input {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  padding: 8px 12px;
-  font-size: 0.9rem;
+  padding: 10px 12px;
+  font-family: "Outfit", sans-serif;
+  font-size: 0.95rem;
   color: var(--text);
   outline: none;
   width: 100%;
+  transition: all 0.2s;
 }
 
-.input:focus { border-color: var(--primary); }
-.input::placeholder { color: var(--text-muted); opacity: 0.6; }
+.input:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 10px var(--primary-glow);
+}
+
+.input::placeholder { color: var(--text-muted); opacity: 0.5; }
 
 .checkbox-group {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 12px;
 }
 
 .checkbox-label {
   display: flex;
   align-items: center;
-  gap: 4px;
-  font-size: 0.85rem;
+  gap: 6px;
+  font-size: 0.9rem;
   cursor: pointer;
   text-transform: none;
   font-weight: 400;
@@ -390,87 +430,128 @@ h3 { font-size: 1rem; margin-bottom: 16px; }
 
 .checkbox-label input[type="checkbox"] {
   accent-color: var(--primary);
+  width: 16px;
+  height: 16px;
 }
 
-.photo-upload { display: flex; align-items: center; gap: 12px; }
+.photo-upload { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
 
 .photo-preview {
   width: 64px;
   height: 64px;
   border-radius: var(--radius-sm);
   object-fit: cover;
-  border: 1px solid var(--border);
+  border: 1px solid var(--primary);
+  box-shadow: 0 0 10px var(--primary-glow);
 }
 
-.photo-btns { display: flex; gap: 6px; flex-wrap: wrap; }
+.photo-btns { display: flex; gap: 8px; flex-wrap: wrap; }
 
 .btn-upload {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  padding: 6px 12px;
-  font-size: 0.8rem;
+  padding: 8px 14px;
+  font-family: "Rajdhani", sans-serif;
+  font-size: 0.9rem;
   font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
   color: var(--text-muted);
   cursor: pointer;
   transition: all 0.2s;
 }
 
-.btn-upload:hover { border-color: var(--primary); color: var(--text); }
+.btn-upload:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+  box-shadow: 0 0 10px var(--primary-glow);
+}
 
 .btn-clear {
   background: none;
-  border: 1px solid var(--border);
+  border: 1px solid var(--danger);
   border-radius: var(--radius-sm);
-  padding: 6px 12px;
-  font-size: 0.8rem;
+  padding: 8px 14px;
+  font-family: "Rajdhani", sans-serif;
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-weight: 600;
   color: var(--danger);
   cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-clear:hover {
+  background: rgba(255, 0, 85, 0.1);
+  box-shadow: 0 0 10px var(--danger-glow);
 }
 
 .error-msg {
-  background: rgba(231, 76, 60, 0.1);
-  border: 1px solid rgba(231, 76, 60, 0.3);
+  background: rgba(255, 0, 85, 0.1);
+  border: 1px solid var(--danger);
   border-radius: var(--radius-sm);
-  padding: 8px 12px;
-  font-size: 0.85rem;
+  padding: 10px 14px;
+  font-size: 0.9rem;
   color: var(--danger);
   width: 100%;
+  box-shadow: inset 0 0 10px rgba(255, 0, 85, 0.2);
 }
 
 .btn-primary {
   background: var(--primary);
-  color: white;
-  border: none;
+  color: #000;
+  border: 1px solid var(--primary);
   border-radius: var(--radius-sm);
   padding: 10px 20px;
-  font-size: 0.9rem;
-  font-weight: 600;
+  font-family: "Rajdhani", sans-serif;
+  font-size: 1rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-weight: 700;
   cursor: pointer;
-  transition: background 0.2s;
+  transition: all 0.2s;
+  box-shadow: 0 0 15px var(--primary-glow);
 }
 
-.btn-primary:hover:not(:disabled) { background: var(--primary-hover); }
-.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-primary:hover:not(:disabled) {
+  background: var(--primary-hover);
+  transform: translateY(-2px);
+  box-shadow: 0 0 20px var(--primary-glow);
+}
 
-.loading { color: var(--text-muted); padding: 24px 0; text-align: center; }
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  box-shadow: none;
+}
 
-.data-table { width: 100%; border-collapse: collapse; }
+.loading { color: var(--text-muted); padding: 24px 0; text-align: center; font-family: "Rajdhani", sans-serif; text-transform: uppercase; letter-spacing: 1px; }
+
+.table-responsive {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.data-table { width: 100%; border-collapse: collapse; min-width: 700px; }
 
 .data-table th {
   text-align: left;
-  font-size: 0.75rem;
+  font-family: "Rajdhani", sans-serif;
+  font-size: 0.9rem;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: var(--text-muted);
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--border);
+  letter-spacing: 1px;
+  color: var(--primary);
+  padding: 12px 16px;
+  border-bottom: 2px solid var(--border);
 }
 
 .data-table td {
-  padding: 10px 12px;
-  font-size: 0.9rem;
+  padding: 12px 16px;
+  font-size: 0.95rem;
   border-bottom: 1px solid var(--border);
 }
 
@@ -478,67 +559,82 @@ h3 { font-size: 1rem; margin-bottom: 16px; }
 
 .clickable-row {
   cursor: pointer;
-  transition: background 0.15s;
+  transition: all 0.2s;
 }
 
 .clickable-row:hover {
-  background: var(--surface-hover);
+  background: rgba(0, 255, 136, 0.05);
 }
 
-.avatar-cell { width: 48px; }
+.avatar-cell { width: 56px; }
 
 .avatar {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
   object-fit: cover;
+  border: 1px solid var(--primary);
 }
 
 .avatar-placeholder {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  background: var(--surface-hover);
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.85rem;
+  font-family: "Rajdhani", sans-serif;
+  font-size: 1.2rem;
   font-weight: 700;
   color: var(--text-muted);
 }
 
-.user-name { font-weight: 600; }
+.user-name { font-weight: 600; font-family: "Rajdhani", sans-serif; font-size: 1.1rem; text-transform: uppercase; letter-spacing: 0.5px; }
 
 .muted { color: var(--text-muted); font-size: 0.85rem; }
 
-.area-list { font-size: 0.8rem; }
+.area-list { font-size: 0.85rem; }
 
 .role-tag {
-  font-size: 0.7rem;
+  font-family: "Rajdhani", sans-serif;
+  font-size: 0.75rem;
   font-weight: 700;
   text-transform: uppercase;
-  padding: 2px 8px;
-  border-radius: 10px;
+  letter-spacing: 1px;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
   white-space: nowrap;
+  display: inline-block;
+  border: 1px solid transparent;
 }
 
-.role-tag.admin { background: rgba(231, 76, 60, 0.15); color: var(--danger); }
-.role-tag.holding_admin { background: rgba(243, 156, 18, 0.15); color: #f39c12; }
-.role-tag.room_admin { background: rgba(52, 152, 219, 0.15); color: #3498db; }
-.role-tag.member { background: rgba(46, 204, 113, 0.15); color: var(--success); }
+.role-tag.admin { background: rgba(255, 0, 85, 0.15); color: var(--danger); border-color: rgba(255, 0, 85, 0.3); }
+.role-tag.holding_admin { background: rgba(243, 156, 18, 0.15); color: #f39c12; border-color: rgba(243, 156, 18, 0.3); }
+.role-tag.room_admin { background: rgba(52, 152, 219, 0.15); color: #3498db; border-color: rgba(52, 152, 219, 0.3); }
+.role-tag.member { background: rgba(0, 255, 136, 0.15); color: var(--success); border-color: rgba(0, 255, 136, 0.3); }
+.role-tag.security, .role-tag.security_admin { background: rgba(155, 89, 182, 0.15); color: #9b59b6; border-color: rgba(155, 89, 182, 0.3); }
 
 .btn-sm {
-  background: var(--primary);
-  color: white;
-  border: none;
+  background: var(--bg);
+  color: var(--primary);
+  border: 1px solid var(--primary);
   border-radius: var(--radius-sm);
   padding: 8px 16px;
-  font-size: 0.85rem;
-  font-weight: 600;
+  font-family: "Rajdhani", sans-serif;
+  font-size: 0.95rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-weight: 700;
   cursor: pointer;
-  transition: background 0.2s;
+  transition: all 0.2s;
   white-space: nowrap;
 }
 
-.btn-sm:hover { background: var(--primary-hover); }
+.btn-sm:hover {
+  background: rgba(0, 255, 136, 0.1);
+  box-shadow: 0 0 10px var(--primary-glow);
+  transform: translateY(-1px);
+}
 </style>

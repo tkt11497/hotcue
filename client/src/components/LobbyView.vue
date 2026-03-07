@@ -131,6 +131,17 @@ function joinRoom(roomId: string) {
   border-radius: var(--radius);
   padding: 40px 32px;
   text-align: center;
+  box-shadow: 0 0 30px rgba(0, 0, 0, 0.5);
+  position: relative;
+  overflow: hidden;
+}
+
+.lobby-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0; height: 2px;
+  background: var(--primary);
+  box-shadow: 0 0 10px var(--primary-glow);
 }
 
 .lobby-icon {
@@ -139,57 +150,70 @@ function joinRoom(roomId: string) {
 }
 
 .brand-logo {
-  width: 70px;
-  height: 70px;
+  width: 76px;
+  height: 76px;
   object-fit: contain;
-  border-radius: 12px;
+  border-radius: var(--radius-sm);
   margin-bottom: 14px;
-  box-shadow: 0 14px 28px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 0 20px var(--primary-glow);
 }
 
 h2 {
-  font-size: 1.5rem;
+  font-family: "Rajdhani", sans-serif;
+  font-size: 1.8rem;
   font-weight: 700;
   margin-bottom: 6px;
+  color: var(--primary);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  text-shadow: 0 0 10px var(--primary-glow);
 }
 
 .subtitle {
   color: var(--text-muted);
-  font-size: 0.9rem;
+  font-size: 0.95rem;
   margin-bottom: 20px;
 }
 
 .brand-credit {
-  color: rgba(228, 230, 237, 0.72);
-  font-size: 0.8rem;
-  margin-bottom: 4px;
+  font-family: "Rajdhani", sans-serif;
+  color: var(--primary);
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 8px;
 }
 
 .error-msg {
   display: flex;
   align-items: center;
   gap: 8px;
-  background: rgba(231, 76, 60, 0.1);
-  border: 1px solid rgba(231, 76, 60, 0.3);
+  background: rgba(255, 0, 85, 0.1);
+  border: 1px solid rgba(255, 0, 85, 0.3);
   border-radius: var(--radius-sm);
   padding: 10px 14px;
   font-size: 0.85rem;
   color: var(--danger);
   margin-bottom: 16px;
   text-align: left;
+  box-shadow: inset 0 0 10px rgba(255, 0, 85, 0.1);
 }
 
 .loading-text,
 .empty-text {
   color: var(--text-muted);
-  font-size: 0.9rem;
+  font-family: "Rajdhani", sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-size: 1rem;
   padding: 24px 0;
 }
 
 .room-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 12px;
 }
 
 .room-item {
@@ -202,15 +226,24 @@ h2 {
   border-radius: var(--radius-sm);
   padding: 14px 16px;
   color: var(--text);
-  font-size: 0.95rem;
+  font-family: "Rajdhani", sans-serif;
+  font-size: 1.1rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-weight: 600;
   cursor: pointer;
   transition: all 0.2s;
   text-align: left;
+  position: relative;
+  overflow: hidden;
 }
 
 .room-item:hover:not(:disabled) {
   border-color: var(--primary);
-  background: var(--surface-hover);
+  background: rgba(0, 255, 136, 0.05);
+  box-shadow: 0 0 15px var(--primary-glow);
+  color: var(--primary);
+  transform: translateY(-2px);
 }
 
 .room-item:disabled {
@@ -220,23 +253,28 @@ h2 {
 
 .room-name {
   flex: 1;
-  font-weight: 600;
 }
 
 .join-arrow {
   color: var(--text-muted);
-  transition: transform 0.2s;
+  transition: transform 0.2s, color 0.2s;
 }
 
 .room-item:hover:not(:disabled) .join-arrow {
-  transform: translateX(3px);
+  transform: translateX(4px);
   color: var(--primary);
 }
 
 .reliability-link {
   display: inline-block;
-  margin-top: 14px;
+  margin-top: 20px;
   color: var(--text-muted);
   font-size: 0.85rem;
+  transition: color 0.2s;
+}
+
+.reliability-link:hover {
+  color: var(--primary);
+  text-shadow: 0 0 8px var(--primary-glow);
 }
 </style>

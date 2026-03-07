@@ -251,38 +251,66 @@ const selectedRoomObj = computed(() => rooms.value.find((r) => r.id === selected
   padding: 24px;
   flex: 1;
   min-width: 280px;
+  box-shadow: 0 0 20px rgba(0, 0, 0, 0.4);
+}
+
+@media (max-width: 768px) {
+  .rooms-panel,
+  .members-panel {
+    padding: 16px;
+    min-width: 100%;
+  }
 }
 
 h2 {
-  font-size: 1.2rem;
+  font-family: "Rajdhani", sans-serif;
+  font-size: 1.6rem;
   margin-bottom: 4px;
+  color: var(--primary);
+  text-shadow: 0 0 10px var(--primary-glow);
+  text-transform: uppercase;
+  letter-spacing: 1px;
 }
 
 h3 {
-  font-size: 1rem;
+  font-family: "Rajdhani", sans-serif;
+  font-size: 1.3rem;
   margin-bottom: 16px;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
+  color: var(--text);
+  text-transform: uppercase;
+  letter-spacing: 1px;
 }
 
 .desc {
   color: var(--text-muted);
-  font-size: 0.85rem;
+  font-size: 0.9rem;
   margin-bottom: 16px;
 }
 
 .hint {
   color: var(--text-muted);
-  font-size: 0.8rem;
+  font-size: 0.85rem;
   margin-bottom: 16px;
   font-style: italic;
+  background: rgba(255, 255, 255, 0.03);
+  padding: 8px 12px;
+  border-left: 2px solid var(--primary);
+  border-radius: var(--radius-sm);
 }
 
 .create-form {
   display: flex;
   gap: 8px;
-  margin-bottom: 16px;
+  margin-bottom: 20px;
+}
+
+@media (max-width: 768px) {
+  .create-form {
+    flex-direction: column;
+  }
 }
 
 .input {
@@ -290,112 +318,163 @@ h3 {
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  padding: 8px 12px;
-  font-size: 0.9rem;
+  padding: 10px 14px;
+  font-family: "Outfit", sans-serif;
+  font-size: 0.95rem;
   color: var(--text);
   outline: none;
+  transition: all 0.2s;
 }
 
 .type-select {
   flex: 0 0 auto;
-  width: 150px;
+  width: 160px;
+}
+
+@media (max-width: 768px) {
+  .type-select {
+    width: 100%;
+  }
 }
 
 .input:focus {
   border-color: var(--primary);
+  box-shadow: 0 0 10px var(--primary-glow);
 }
 
 .input::placeholder {
   color: var(--text-muted);
-  opacity: 0.6;
+  opacity: 0.5;
 }
 
 .btn-sm {
   background: var(--primary);
-  color: white;
-  border: none;
+  color: #000;
+  border: 1px solid var(--primary);
   border-radius: var(--radius-sm);
-  padding: 8px 16px;
-  font-size: 0.85rem;
-  font-weight: 600;
+  padding: 10px 16px;
+  font-family: "Rajdhani", sans-serif;
+  font-size: 0.95rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
   cursor: pointer;
-  transition: background 0.2s;
+  transition: all 0.2s;
   white-space: nowrap;
 }
 
 .btn-sm:hover:not(:disabled) {
-  background: var(--primary-hover);
+  background: #00e67a;
+  transform: translateY(-2px);
+  box-shadow: 0 0 15px var(--primary-glow);
 }
 
 .btn-sm:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+  background: var(--surface);
+  color: var(--text-muted);
+  border-color: var(--border);
 }
 
 .loading,
 .empty {
   color: var(--text-muted);
-  font-size: 0.85rem;
-  padding: 16px 0;
+  font-family: "Rajdhani", sans-serif;
+  font-size: 1rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  padding: 24px 0;
   text-align: center;
 }
 
 .room-list {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 8px;
 }
 
 .room-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 12px;
+  padding: 14px 16px;
+  background: var(--bg);
+  border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .room-row:hover {
-  background: var(--surface-hover);
+  background: rgba(0, 255, 136, 0.05);
+  border-color: var(--primary);
+  box-shadow: 0 0 10px var(--primary-glow);
+  transform: translateY(-2px);
 }
 
 .room-row.active {
-  background: rgba(108, 92, 231, 0.1);
-  color: var(--primary);
+  background: var(--primary);
+  color: #000;
+  border-color: var(--primary);
+  box-shadow: 0 0 15px var(--primary-glow);
+}
+
+.room-row.active .room-name, 
+.room-row.active .btn-delete {
+  color: #000;
+}
+
+.room-row.active .btn-delete:hover {
+  background: rgba(0, 0, 0, 0.1);
+  color: #000;
 }
 
 .room-info {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
 }
 
 .room-name {
-  font-weight: 600;
-  font-size: 0.9rem;
+  font-family: "Rajdhani", sans-serif;
+  font-weight: 700;
+  font-size: 1.1rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .holding-badge {
-  font-size: 0.6rem;
+  font-family: "Rajdhani", sans-serif;
+  font-size: 0.7rem;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
-  padding: 2px 6px;
-  border-radius: 6px;
+  letter-spacing: 1px;
+  padding: 2px 8px;
+  border-radius: 4px;
   background: rgba(243, 156, 18, 0.15);
   color: #f39c12;
+  border: 1px solid rgba(243, 156, 18, 0.3);
 }
 
 .security-badge {
-  font-size: 0.6rem;
+  font-family: "Rajdhani", sans-serif;
+  font-size: 0.7rem;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
-  padding: 2px 6px;
-  border-radius: 6px;
+  letter-spacing: 1px;
+  padding: 2px 8px;
+  border-radius: 4px;
   background: rgba(155, 89, 182, 0.15);
   color: #9b59b6;
+  border: 1px solid rgba(155, 89, 182, 0.3);
+}
+
+.room-row.active .holding-badge,
+.room-row.active .security-badge {
+  background: rgba(0,0,0,0.1);
+  color: #000;
+  border-color: rgba(0,0,0,0.2);
 }
 
 .btn-delete {
@@ -403,7 +482,7 @@ h3 {
   border: none;
   color: var(--text-muted);
   cursor: pointer;
-  padding: 4px;
+  padding: 6px;
   border-radius: 4px;
   transition: all 0.2s;
   display: flex;
@@ -411,7 +490,8 @@ h3 {
 
 .btn-delete:hover {
   color: var(--danger);
-  background: rgba(231, 76, 60, 0.1);
+  background: rgba(255, 0, 85, 0.1);
+  box-shadow: 0 0 10px var(--danger-glow);
 }
 
 .data-table {
@@ -421,18 +501,19 @@ h3 {
 
 .data-table th {
   text-align: left;
-  font-size: 0.75rem;
+  font-family: "Rajdhani", sans-serif;
+  font-size: 0.85rem;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: var(--text-muted);
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--border);
+  letter-spacing: 1px;
+  color: var(--primary);
+  padding: 10px 12px;
+  border-bottom: 2px solid var(--border);
 }
 
 .data-table td {
-  padding: 10px 12px;
-  font-size: 0.9rem;
+  padding: 12px;
+  font-size: 0.95rem;
   border-bottom: 1px solid var(--border);
 }
 
@@ -442,7 +523,7 @@ h3 {
 
 .muted {
   color: var(--text-muted);
-  font-size: 0.8rem;
-  margin-left: 6px;
+  font-size: 0.85rem;
+  margin-left: 8px;
 }
 </style>
