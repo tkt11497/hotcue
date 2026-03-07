@@ -149,6 +149,7 @@ async function handleLeave() {
   await signaling.leaveRoom();
   currentRoomName.value = "";
 }
+
 </script>
 
 <template>

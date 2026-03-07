@@ -86,6 +86,14 @@ export function useSignaling() {
       if (roomType !== "security") {
         throw new Error("You are not allowed in this room");
       }
+    } else if (globalRole === "member") {
+      const userAssignedRoom = profileData?.assignedRoom;
+      if (room === userAssignedRoom) {
+        // Assigned members can always join their own room.
+      } else {
+        const allowedSnap = await getDoc(doc(db, "rooms", room, "allowed", uid));
+        if (!allowedSnap.exists()) throw new Error("You are not allowed in this room");
+      }
     } else {
       const allowedSnap = await getDoc(doc(db, "rooms", room, "allowed", uid));
       if (!allowedSnap.exists()) throw new Error("You are not allowed in this room");

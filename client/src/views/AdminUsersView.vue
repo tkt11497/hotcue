@@ -161,6 +161,10 @@ function getDeptName(id: string) {
   return departments.value.find((d) => d.id === id)?.name || id;
 }
 
+function getRoomName(id: string) {
+  return rooms.value.find((r) => r.id === id)?.name || id;
+}
+
 function goToUser(uid: string) {
   router.push(`/admin/users/${uid}`);
 }
@@ -273,6 +277,7 @@ const roleNeedsRoom = (role: string) => role === "room_admin" || role === "membe
           <th>Name</th>
           <th>Company</th>
           <th>Department</th>
+          <th>Assigned Room</th>
           <th>Access Areas</th>
           <th>Role</th>
         </tr>
@@ -289,6 +294,7 @@ const roleNeedsRoom = (role: string) => role === "room_admin" || role === "membe
           </td>
           <td><span class="muted">{{ u.company || "—" }}</span></td>
           <td><span class="muted">{{ u.department ? getDeptName(u.department) : "—" }}</span></td>
+          <td><span class="muted">{{ u.assignedRoom ? getRoomName(u.assignedRoom) : "—" }}</span></td>
           <td><span class="muted area-list">{{ getAreaNames(u.accessAreas || []) }}</span></td>
           <td>
             <span class="role-tag" :class="u.role">{{ u.role.replace("_", " ") }}</span>

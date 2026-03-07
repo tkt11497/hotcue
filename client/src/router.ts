@@ -38,6 +38,12 @@ const router = createRouter({
       meta: { requiresAuth: true, requiresSecurity: true },
     },
     {
+      path: "/tasks",
+      name: "tasks",
+      component: () => import("./views/TaskBoardView.vue"),
+      meta: { requiresAuth: true, requiresTaskBoard: true },
+    },
+    {
       path: "/call-reliability",
       name: "call-reliability",
       component: () => import("./views/CallReliabilityView.vue"),
@@ -109,6 +115,14 @@ router.beforeEach(async (to) => {
     const snap = await getDoc(doc(db, "users", user.uid));
     const role = snap.data()?.role;
     if (role !== "security" && role !== "security_admin" && role !== "admin") {
+      return { name: "voice" };
+    }
+  }
+
+  if (to.meta.requiresTaskBoard && user) {
+    const snap = await getDoc(doc(db, "users", user.uid));
+    const role = snap.data()?.role;
+    if (role !== "room_admin" && role !== "member") {
       return { name: "voice" };
     }
   }

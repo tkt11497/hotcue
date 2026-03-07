@@ -2,7 +2,7 @@
 import { useRouter } from "vue-router";
 import { useAuth } from "./composables/useAuth";
 
-const { userProfile, authReady, isAdmin, isSecurityRole, logout } = useAuth();
+const { userProfile, authReady, isAdmin, isSecurityRole, isRoomAdmin, logout } = useAuth();
 const router = useRouter();
 
 async function handleLogout() {
@@ -26,6 +26,7 @@ async function handleLogout() {
         </router-link>
         <nav class="nav-links">
           <router-link to="/" class="nav-link">Voice</router-link>
+          <router-link v-if="isRoomAdmin || userProfile?.role === 'member'" to="/tasks" class="nav-link">Tasks</router-link>
           <router-link v-if="isSecurityRole" to="/scanner" class="nav-link">Scanner</router-link>
           <router-link v-if="isAdmin" to="/admin" class="nav-link">Admin</router-link>
         </nav>

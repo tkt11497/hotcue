@@ -49,6 +49,13 @@ watch(userProfile, async (profile) => {
         if (data.type === "security") {
           allowed.push(entry);
         }
+      } else if (profile.role === "member") {
+        if (roomDoc.id === profile.assignedRoom) {
+          allowed.push(entry);
+          continue;
+        }
+        const snap = await getDoc(doc(db, "rooms", roomDoc.id, "allowed", profile.uid));
+        if (snap.exists()) allowed.push(entry);
       } else {
         const snap = await getDoc(doc(db, "rooms", roomDoc.id, "allowed", profile.uid));
         if (snap.exists()) allowed.push(entry);
