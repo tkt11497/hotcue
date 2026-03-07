@@ -29,16 +29,10 @@ async function handleLogin() {
 <template>
   <div class="auth-page">
     <div class="auth-card">
-      <div class="auth-icon">
-        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-          <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-          <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-          <line x1="12" y1="19" x2="12" y2="23" />
-          <line x1="8" y1="23" x2="16" y2="23" />
-        </svg>
-      </div>
+      <img src="/hotcue-logo.png" alt="Hot Cue logo" class="auth-logo" />
       <h2>Sign In</h2>
-      <p class="subtitle">Log in to GCN Voice</p>
+      <p class="subtitle">Log in to Hot Cue</p>
+      <p class="brand-credit">Developed by GCN</p>
 
       <form @submit.prevent="handleLogin" class="auth-form">
         <div class="field">
@@ -76,16 +70,22 @@ async function handleLogin() {
 .auth-card {
   width: 100%;
   max-width: 400px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
+  background: linear-gradient(180deg, rgba(26, 29, 39, 0.95), rgba(19, 22, 31, 0.95));
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
   padding: 40px 32px;
   text-align: center;
+  box-shadow: 0 22px 50px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(8px);
 }
 
-.auth-icon {
-  color: var(--primary);
+.auth-logo {
+  width: 76px;
+  height: 76px;
+  object-fit: contain;
+  border-radius: 14px;
   margin-bottom: 16px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.3);
 }
 
 h2 {
@@ -97,7 +97,13 @@ h2 {
 .subtitle {
   color: var(--text-muted);
   font-size: 0.9rem;
-  margin-bottom: 28px;
+  margin-bottom: 2px;
+}
+
+.brand-credit {
+  color: rgba(228, 230, 237, 0.7);
+  font-size: 0.8rem;
+  margin-bottom: 26px;
 }
 
 .auth-form {
@@ -122,18 +128,20 @@ h2 {
 }
 
 .field input {
-  background: var(--bg);
-  border: 1px solid var(--border);
+  background: rgba(10, 12, 18, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.09);
   border-radius: var(--radius-sm);
   padding: 10px 14px;
   font-size: 0.95rem;
   color: var(--text);
   outline: none;
-  transition: border-color 0.2s;
+  transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
 }
 
 .field input:focus {
   border-color: var(--primary);
+  box-shadow: 0 0 0 4px rgba(108, 92, 231, 0.2);
+  transform: translateY(-1px);
 }
 
 .field input::placeholder {
@@ -151,7 +159,7 @@ h2 {
 }
 
 .btn-primary {
-  background: var(--primary);
+  background: linear-gradient(135deg, var(--primary), #4a7cff);
   color: white;
   border: none;
   border-radius: var(--radius-sm);
@@ -159,12 +167,15 @@ h2 {
   font-size: 1rem;
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.2s;
+  transition: transform 0.2s, box-shadow 0.2s, filter 0.2s;
   margin-top: 4px;
+  box-shadow: 0 14px 24px rgba(108, 92, 231, 0.35);
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: var(--primary-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 18px 30px rgba(108, 92, 231, 0.45);
+  filter: brightness(1.03);
 }
 
 .btn-primary:disabled {

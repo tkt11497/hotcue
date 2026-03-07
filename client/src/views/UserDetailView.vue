@@ -244,7 +244,7 @@ const roleNeedsRoom = (role: string) => role === "room_admin" || role === "membe
   <div v-if="userData" class="print-card">
     <div class="card">
       <div class="card-header">
-        <h1>GCN Voice</h1>
+        <h1>Hot Cue</h1>
       </div>
       <div class="card-body">
         <div class="card-photo-col">

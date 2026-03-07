@@ -77,15 +77,9 @@ function joinRoom(roomId: string) {
 <template>
   <div class="lobby">
     <div class="lobby-card">
-      <div class="lobby-icon">
-        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-          <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-          <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-          <line x1="12" y1="19" x2="12" y2="23" />
-          <line x1="8" y1="23" x2="16" y2="23" />
-        </svg>
-      </div>
-      <h2>Voice Rooms</h2>
+      <img src="/hotcue-logo.png" alt="Hot Cue logo" class="brand-logo" />
+      <h2>Hot Cue Rooms</h2>
+      <p class="brand-credit">Developed by GCN</p>
       <p class="subtitle">Welcome, {{ userProfile?.displayName }}</p>
 
       <div v-if="error" class="error-msg">
@@ -144,6 +138,15 @@ function joinRoom(roomId: string) {
   margin-bottom: 16px;
 }
 
+.brand-logo {
+  width: 70px;
+  height: 70px;
+  object-fit: contain;
+  border-radius: 12px;
+  margin-bottom: 14px;
+  box-shadow: 0 14px 28px rgba(0, 0, 0, 0.35);
+}
+
 h2 {
   font-size: 1.5rem;
   font-weight: 700;
@@ -153,7 +156,13 @@ h2 {
 .subtitle {
   color: var(--text-muted);
   font-size: 0.9rem;
-  margin-bottom: 24px;
+  margin-bottom: 20px;
+}
+
+.brand-credit {
+  color: rgba(228, 230, 237, 0.72);
+  font-size: 0.8rem;
+  margin-bottom: 4px;
 }
 
 .error-msg {

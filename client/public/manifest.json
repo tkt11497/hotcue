@@ -1,6 +1,6 @@
 {
-  "name": "GCN Voice",
-  "short_name": "GCN Voice",
+  "name": "Hot Cue",
+  "short_name": "Hot Cue",
   "description": "LAN voice communication app",
   "start_url": "/",
   "display": "standalone",

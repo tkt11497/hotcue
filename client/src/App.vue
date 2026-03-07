@@ -29,16 +29,17 @@ async function handleLogout() {
 
 <template>
   <div class="app" v-if="authReady">
+    <div class="bg-orb orb-a"></div>
+    <div class="bg-orb orb-b"></div>
+    <div class="bg-grid"></div>
     <header class="app-header" v-if="userProfile">
       <div class="header-left">
         <router-link to="/" class="logo">
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-            <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-            <line x1="12" y1="19" x2="12" y2="23" />
-            <line x1="8" y1="23" x2="16" y2="23" />
-          </svg>
-          <h1>GCN Voice</h1>
+          <img src="/hotcue-logo.png" alt="Hot Cue logo" class="brand-logo" />
+          <div class="brand-copy">
+            <h1>Hot Cue</h1>
+            <p>Developed by GCN</p>
+          </div>
         </router-link>
         <nav class="nav-links">
           <router-link to="/" class="nav-link">Voice</router-link>
@@ -109,10 +110,16 @@ body {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
+  position: relative;
+  overflow: hidden;
   padding-top: var(--safe-top);
   padding-bottom: var(--safe-bottom);
   padding-left: var(--safe-left);
   padding-right: var(--safe-right);
+  background:
+    radial-gradient(circle at 0% 0%, rgba(83, 131, 236, 0.25), transparent 40%),
+    radial-gradient(circle at 100% 100%, rgba(108, 92, 231, 0.25), transparent 40%),
+    var(--bg);
 }
 
 .loading-screen {
@@ -127,11 +134,16 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 24px;
-  border-bottom: 1px solid var(--border);
-  background: var(--surface);
+  padding: 14px 24px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(26, 29, 39, 0.85);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.25);
   gap: 16px;
   flex-wrap: wrap;
+  position: sticky;
+  top: 0;
+  z-index: 20;
 }
 
 .header-left {
@@ -149,15 +161,40 @@ body {
 .logo {
   display: flex;
   align-items: center;
-  gap: 10px;
-  color: var(--primary);
+  gap: 12px;
+  color: var(--text);
   text-decoration: none;
+  transition: transform 0.2s ease;
 }
 
-.logo h1 {
-  font-size: 1.25rem;
+.logo:hover {
+  transform: translateY(-1px);
+}
+
+.brand-logo {
+  width: 44px;
+  height: 44px;
+  object-fit: contain;
+  border-radius: 10px;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.3);
+}
+
+.brand-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.brand-copy h1 {
+  font-size: 1.1rem;
   font-weight: 700;
-  letter-spacing: -0.5px;
+  letter-spacing: -0.3px;
+}
+
+.brand-copy p {
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  letter-spacing: 0.3px;
 }
 
 .nav-links {
@@ -170,19 +207,23 @@ body {
   text-decoration: none;
   font-size: 0.85rem;
   font-weight: 600;
-  padding: 6px 12px;
+  padding: 8px 14px;
   border-radius: var(--radius-sm);
-  transition: all 0.2s;
+  transition: all 0.2s ease;
+  border: 1px solid transparent;
 }
 
 .nav-link:hover {
   color: var(--text);
-  background: var(--surface-hover);
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.08);
+  transform: translateY(-1px);
 }
 
 .nav-link.router-link-active {
-  color: var(--primary);
-  background: rgba(108, 92, 231, 0.1);
+  color: #fff;
+  background: linear-gradient(135deg, var(--primary), #4a7cff);
+  box-shadow: 0 10px 20px rgba(108, 92, 231, 0.35);
 }
 
 .user-info {
@@ -235,10 +276,10 @@ body {
 }
 
 .btn-logout {
-  background: none;
-  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   color: var(--text-muted);
-  padding: 6px 14px;
+  padding: 8px 14px;
   border-radius: var(--radius-sm);
   font-size: 0.8rem;
   font-weight: 600;
@@ -247,8 +288,9 @@ body {
 }
 
 .btn-logout:hover {
-  color: var(--danger);
-  border-color: var(--danger);
+  color: #fff;
+  border-color: rgba(231, 76, 60, 0.7);
+  background: rgba(231, 76, 60, 0.2);
 }
 
 .app-main {
@@ -256,6 +298,46 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
+  position: relative;
+  z-index: 2;
   padding: 24px;
+}
+
+.bg-orb {
+  position: fixed;
+  border-radius: 999px;
+  pointer-events: none;
+  filter: blur(50px);
+  opacity: 0.45;
+  z-index: 0;
+}
+
+.orb-a {
+  width: 280px;
+  height: 280px;
+  left: -90px;
+  top: 10vh;
+  background: rgba(71, 132, 252, 0.4);
+}
+
+.orb-b {
+  width: 260px;
+  height: 260px;
+  right: -100px;
+  bottom: 8vh;
+  background: rgba(109, 217, 128, 0.28);
+}
+
+.bg-grid {
+  position: fixed;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.04) 1px, transparent 1px);
+  background-size: 42px 42px;
+  mask-image: radial-gradient(circle at center, black 20%, transparent 75%);
+  opacity: 0.2;
+  pointer-events: none;
+  z-index: 0;
 }
 </style>

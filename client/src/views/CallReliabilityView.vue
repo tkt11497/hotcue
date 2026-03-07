@@ -13,7 +13,7 @@ async function openBatterySettings() {
     <div class="card">
       <h2>Call Reliability</h2>
       <p>
-        To keep calls alive on lock screen, allow notifications and disable battery optimization for GCN Voice.
+        To keep calls alive on lock screen, allow notifications and disable battery optimization for Hot Cue.
       </p>
       <ul>
         <li>Allow notification permission for call controls.</li>
