@@ -24,6 +24,7 @@
     "@capacitor/cli": "^8.1.0",
     "@capacitor/core": "^8.1.0",
     "@capacitor/ios": "^8.1.0",
+    "@capacitor/local-notifications": "^8.0.2",
     "@capawesome-team/capacitor-android-foreground-service": "^8.0.1",
     "firebase": "^12.10.0",
     "html5-qrcode": "^2.3.8",

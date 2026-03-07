@@ -1,11 +1,27 @@
 <script setup lang="ts">
+import { onUnmounted, watch } from "vue";
 import { useRouter } from "vue-router";
 import { useAuth } from "./composables/useAuth";
+import { useTaskNotifications } from "./composables/useTaskNotifications";
 
 const { userProfile, authReady, isAdmin, isSecurityRole, isRoomAdmin, logout } = useAuth();
 const router = useRouter();
+const taskNotifications = useTaskNotifications();
+
+watch(
+  () => userProfile.value,
+  (profile) => {
+    taskNotifications.start(profile);
+  },
+  { immediate: true }
+);
+
+onUnmounted(() => {
+  taskNotifications.stop();
+});
 
 async function handleLogout() {
+  taskNotifications.stop();
   await logout();
   router.push("/login");
 }
