@@ -32,6 +32,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
@@ -86,6 +87,7 @@ public class NativeWebRtcManager {
     private String localPeerId;
     private long turnCacheExpiryEpochMs = 0L;
     private long turnLastAttemptEpochMs = 0L;
+    private volatile boolean shuttingDown = false;
 
     public NativeWebRtcManager(Callback callback) {
         this.callback = callback;
@@ -93,6 +95,7 @@ public class NativeWebRtcManager {
     }
 
     public void initialize(Context context) {
+        shuttingDown = false;
         PeerConnectionFactory.InitializationOptions options =
             PeerConnectionFactory.InitializationOptions.builder(context)
                 .setEnableInternalTracer(false)
@@ -123,13 +126,17 @@ public class NativeWebRtcManager {
     }
 
     public void createOffer(String peerId) {
+        if (shuttingDown) return;
         rtcExecutor.execute(() -> {
+            if (shuttingDown) return;
             createOfferInternal(peerId, false);
         });
     }
 
     public void handleOffer(String peerId, Map<String, Object> payload) {
+        if (shuttingDown) return;
         rtcExecutor.execute(() -> {
+            if (shuttingDown) return;
             Integer remoteGeneration = parseSignalGeneration(payload);
             int currentGeneration = getPeerGeneration(peerId);
             if (remoteGeneration != null && remoteGeneration < currentGeneration) {
@@ -180,7 +187,9 @@ public class NativeWebRtcManager {
     }
 
     public void handleAnswer(String peerId, Map<String, Object> payload) {
+        if (shuttingDown) return;
         rtcExecutor.execute(() -> {
+            if (shuttingDown) return;
             Integer remoteGeneration = parseSignalGeneration(payload);
             int currentGeneration = getPeerGeneration(peerId);
             if (remoteGeneration != null && remoteGeneration < currentGeneration) {
@@ -216,7 +225,9 @@ public class NativeWebRtcManager {
     }
 
     public void handleIceCandidate(String peerId, Map<String, Object> payload) {
+        if (shuttingDown) return;
         rtcExecutor.execute(() -> {
+            if (shuttingDown) return;
             Integer remoteGeneration = parseSignalGeneration(payload);
             int currentGeneration = getPeerGeneration(peerId);
             if (remoteGeneration != null && remoteGeneration < currentGeneration) {
@@ -259,6 +270,7 @@ public class NativeWebRtcManager {
     }
 
     public void closeAll() {
+        shuttingDown = true;
         rtcExecutor.execute(() -> {
             for (ScheduledFuture<?> task : disconnectRecoveryTasks.values()) {
                 if (task != null) task.cancel(false);
@@ -312,7 +324,7 @@ public class NativeWebRtcManager {
         PeerConnection existing = peerConnections.get(peerId);
         if (existing != null) return existing;
         if (factory == null) {
-            callback.onError("WebRTC factory not initialized");
+            safeOnError("WebRTC factory not initialized");
             return null;
         }
 
@@ -324,6 +336,7 @@ public class NativeWebRtcManager {
 
             @Override
             public void onIceConnectionChange(PeerConnection.IceConnectionState iceConnectionState) {
+                if (shuttingDown) return;
                 String connectionState;
                 switch (iceConnectionState) {
                     case CONNECTED:
@@ -332,7 +345,7 @@ public class NativeWebRtcManager {
                         peerLastReconnectAttempt.remove(peerId);
                         peerHardResetAttempts.remove(peerId);
                         cancelDisconnectRecoveryTask(peerId);
-                        callback.onRecoveryState(peerId, "idle", "ice-connected");
+                        safeOnRecoveryState(peerId, "idle", "ice-connected");
                         Log.i(TAG, "Peer " + peerId + " ICE connected (" + iceConnectionState + ")");
                         break;
                     case FAILED:
@@ -374,7 +387,7 @@ public class NativeWebRtcManager {
                 payload.put("sdpMid", iceCandidate.sdpMid);
                 payload.put("sdpMLineIndex", iceCandidate.sdpMLineIndex);
                 payload.put("gen", getPeerGeneration(peerId));
-                callback.onSignal(peerId, "ice-candidate", payload);
+                safeOnSignal(peerId, "ice-candidate", payload);
             }
 
             @Override
@@ -394,19 +407,21 @@ public class NativeWebRtcManager {
 
             @Override
             public void onAddTrack(RtpReceiver receiver, MediaStream[] mediaStreams) {
+                if (shuttingDown) return;
                 PeerDiagnostics diag = getOrCreateDiagnostics(peerId);
                 diag.remoteTrackCount += 1;
-                callback.onPeerState(peerId, copyDiagnostics(diag));
+                safeOnPeerState(peerId, copyDiagnostics(diag));
             }
 
             @Override
             public void onConnectionChange(PeerConnection.PeerConnectionState newState) {
+                if (shuttingDown) return;
                 updateAndPublishPeerDiagnostics(peerId, safeState(newState), currentIceState(peerId));
             }
         });
 
         if (pc == null) {
-            callback.onError("Failed to create PeerConnection for " + peerId);
+            safeOnError("Failed to create PeerConnection for " + peerId);
             return null;
         }
 
@@ -435,7 +450,7 @@ public class NativeWebRtcManager {
                     @Override
                     public void onCreateSuccess(SessionDescription answer) {
                         pc.setLocalDescription(new SdpAdapter(), answer);
-                        callback.onSignal(
+                        safeOnSignal(
                             peerId,
                             "answer",
                             CollectionsUtil.mapOf(
@@ -505,7 +520,7 @@ public class NativeWebRtcManager {
                         diag.rttMs = rttMs;
                         diag.jitterMs = jitterMs;
                         diag.packetsLost = packetsLost;
-                        callback.onPeerState(peerId, copyDiagnostics(diag));
+                        safeOnPeerState(peerId, copyDiagnostics(diag));
                     });
                 }
             });
@@ -525,7 +540,7 @@ public class NativeWebRtcManager {
         PeerDiagnostics diag = getOrCreateDiagnostics(peerId);
         diag.connectionState = connectionState;
         diag.iceState = iceState;
-        callback.onPeerState(peerId, copyDiagnostics(diag));
+        safeOnPeerState(peerId, copyDiagnostics(diag));
     }
 
     private PeerDiagnostics copyDiagnostics(PeerDiagnostics source) {
@@ -601,19 +616,24 @@ public class NativeWebRtcManager {
             return;
         }
         peerLastReconnectAttempt.put(peerId, now);
-        callback.onRecoveryState(peerId, "ice_restart", reason);
+        safeOnRecoveryState(peerId, "ice_restart", reason);
         Log.i(TAG, "Attempting ICE restart for " + peerId + " after " + reason);
         createOfferInternal(peerId, true);
     }
 
     private void scheduleHardReset(String peerId, String reason) {
+        if (shuttingDown || reconnectExecutor.isShutdown()) return;
         cancelDisconnectRecoveryTask(peerId);
-        ScheduledFuture<?> task = reconnectExecutor.schedule(
-            () -> rtcExecutor.execute(() -> maybeHardResetPeer(peerId, reason)),
-            HARD_RESET_AFTER_DISCONNECT_MS,
-            TimeUnit.MILLISECONDS
-        );
-        disconnectRecoveryTasks.put(peerId, task);
+        try {
+            ScheduledFuture<?> task = reconnectExecutor.schedule(
+                () -> rtcExecutor.execute(() -> maybeHardResetPeer(peerId, reason)),
+                HARD_RESET_AFTER_DISCONNECT_MS,
+                TimeUnit.MILLISECONDS
+            );
+            disconnectRecoveryTasks.put(peerId, task);
+        } catch (RejectedExecutionException ignored) {
+            // Expected during/after hangup while native callbacks are still draining.
+        }
     }
 
     private void cancelDisconnectRecoveryTask(String peerId) {
@@ -639,7 +659,7 @@ public class NativeWebRtcManager {
 
         int nextGeneration = getPeerGeneration(peerId) + 1;
         peerGeneration.put(peerId, nextGeneration);
-        callback.onRecoveryState(peerId, "hard_reset", reason);
+        safeOnRecoveryState(peerId, "hard_reset", reason);
         forceReplacePeerConnection(peerId, "hard-reset-" + reason + "-attempt-" + attempts);
         Log.w(
             TAG,
@@ -648,7 +668,7 @@ public class NativeWebRtcManager {
         );
         createOfferInternal(peerId, false);
         if (attempts >= MAX_HARD_RESET_ATTEMPTS) {
-            callback.onPeerRecoveryFailure(peerId, attempts, reason);
+            safeOnPeerRecoveryFailure(peerId, attempts, reason);
         }
     }
 
@@ -680,7 +700,7 @@ public class NativeWebRtcManager {
             @Override
             public void onCreateSuccess(SessionDescription sdp) {
                 pc.setLocalDescription(new SdpAdapter(), sdp);
-                callback.onSignal(
+                safeOnSignal(
                     peerId,
                     "offer",
                     CollectionsUtil.mapOf(
@@ -765,6 +785,46 @@ public class NativeWebRtcManager {
             return new ArrayList<>();
         } finally {
             if (conn != null) conn.disconnect();
+        }
+    }
+
+    private void safeOnSignal(String to, String type, Map<String, Object> payload) {
+        try {
+            callback.onSignal(to, type, payload);
+        } catch (Throwable t) {
+            Log.e(TAG, "onSignal callback failed", t);
+        }
+    }
+
+    private void safeOnPeerState(String peerId, PeerDiagnostics diagnostics) {
+        try {
+            callback.onPeerState(peerId, diagnostics);
+        } catch (Throwable t) {
+            Log.e(TAG, "onPeerState callback failed for " + peerId, t);
+        }
+    }
+
+    private void safeOnRecoveryState(String peerId, String recoveryState, String reason) {
+        try {
+            callback.onRecoveryState(peerId, recoveryState, reason);
+        } catch (Throwable t) {
+            Log.e(TAG, "onRecoveryState callback failed for " + peerId, t);
+        }
+    }
+
+    private void safeOnPeerRecoveryFailure(String peerId, int attempts, String reason) {
+        try {
+            callback.onPeerRecoveryFailure(peerId, attempts, reason);
+        } catch (Throwable t) {
+            Log.e(TAG, "onPeerRecoveryFailure callback failed for " + peerId, t);
+        }
+    }
+
+    private void safeOnError(String message) {
+        try {
+            callback.onError(message);
+        } catch (Throwable t) {
+            Log.e(TAG, "onError callback failed", t);
         }
     }
 
