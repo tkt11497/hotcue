@@ -9,7 +9,9 @@
     "preview": "vite preview",
     "cap:build": "vite build && npx cap sync",
     "cap:open": "npx cap open android",
-    "cap:run": "npx cap run android"
+    "cap:run": "npx cap run android",
+    "hosting:deploy": "npm run build && npx firebase-tools deploy --only hosting --config firebase.json",
+    "hosting:preview": "npm run build && npx firebase-tools hosting:channel:deploy preview --config firebase.json"
   },
   "devDependencies": {
     "@types/qrcode": "^1.5.6",
