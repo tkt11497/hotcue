@@ -83,10 +83,7 @@ export function useSignaling() {
     } else if (globalRole === "admin" || globalRole === "holding_admin") {
       // can join any room
     } else if (globalRole === "room_admin") {
-      const userAssignedRoom = profileData?.assignedRoom;
-      if (roomType !== "holding" && room !== userAssignedRoom) {
-        throw new Error("You are not allowed in this room");
-      }
+      // Room admins can join any room.
     } else if (globalRole === "security_admin") {
       if (roomType !== "security" && roomType !== "holding") {
         throw new Error("You are not allowed in this room");

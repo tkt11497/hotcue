@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { ref, watch } from "vue";
+import { ref, watch, onUnmounted } from "vue";
 import { useAuth } from "../composables/useAuth";
 import { db } from "../firebase";
 import { collection, getDocs, getCountFromServer, doc, getDoc } from "firebase/firestore";
 
 const { userProfile, canAccessAllRooms } = useAuth();
-let roomsLoaded = false;
+type LobbyProfile = NonNullable<(typeof userProfile)["value"]>;
+let refreshTimer: ReturnType<typeof setInterval> | null = null;
 
 const props = defineProps<{
   error: string | null;
@@ -26,9 +27,8 @@ interface RoomEntry {
 const rooms = ref<RoomEntry[]>([]);
 const loading = ref(true);
 
-watch(userProfile, async (profile) => {
-  if (!profile || roomsLoaded) return;
-  roomsLoaded = true;
+async function loadRooms(profile: LobbyProfile, showLoading = false) {
+  if (showLoading) loading.value = true;
   try {
     const roomsSnap = await getDocs(collection(db, "rooms"));
     const allowed: RoomEntry[] = [];
@@ -54,9 +54,7 @@ watch(userProfile, async (profile) => {
       } else if (canAccessAllRooms.value) {
         allowed.push(entry);
       } else if (profile.role === "room_admin") {
-        if (roomDoc.id === profile.assignedRoom || data.type === "holding") {
-          allowed.push(entry);
-        }
+        allowed.push(entry);
       } else if (profile.role === "security_admin") {
         if (data.type === "security" || data.type === "holding") {
           allowed.push(entry);
@@ -81,9 +79,38 @@ watch(userProfile, async (profile) => {
   } catch (err) {
     console.error("[lobby] failed to load rooms:", err);
   } finally {
+    if (showLoading) loading.value = false;
+  }
+}
+
+watch(userProfile, async (profile) => {
+  if (!profile) {
+    if (refreshTimer) {
+      clearInterval(refreshTimer);
+      refreshTimer = null;
+    }
+    rooms.value = [];
     loading.value = false;
+    return;
+  }
+
+  await loadRooms(profile, true);
+
+  if (!refreshTimer) {
+    refreshTimer = setInterval(() => {
+      const currentProfile = userProfile.value;
+      if (!currentProfile) return;
+      void loadRooms(currentProfile);
+    }, 180000);
   }
 }, { immediate: true });
+
+onUnmounted(() => {
+  if (refreshTimer) {
+    clearInterval(refreshTimer);
+    refreshTimer = null;
+  }
+});
 
 function joinRoom(roomId: string) {
   const room = rooms.value.find((r) => r.id === roomId);
@@ -97,6 +124,10 @@ function joinRoom(roomId: string) {
   }
 
   emit("join", roomId);
+}
+
+function isAssignedRoom(roomId: string) {
+  return userProfile.value?.role === "room_admin" && !!userProfile.value.assignedRoom && userProfile.value.assignedRoom === roomId;
 }
 </script>
 
@@ -128,6 +159,7 @@ function joinRoom(roomId: string) {
           v-for="room in rooms"
           :key="room.id"
           class="room-item"
+          :class="{ 'room-item-assigned': isAssignedRoom(room.id) }"
           :disabled="connecting"
           @click="joinRoom(room.id)"
         >
@@ -135,6 +167,7 @@ function joinRoom(roomId: string) {
             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
           </svg>
           <span class="room-name">{{ room.name }}</span>
+          <span v-if="isAssignedRoom(room.id)" class="assigned-badge">YOUR ROOM</span>
           <span v-if="room.type === 'special'" class="special-badge">SPECIAL</span>
           <span class="room-user-count" :title="`${room.userCount} in room`">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -282,6 +315,12 @@ h2 {
   transform: translateY(-2px);
 }
 
+.room-item-assigned {
+  border-color: var(--primary);
+  background: rgba(0, 255, 136, 0.08);
+  box-shadow: inset 0 0 0 1px var(--primary), 0 0 12px var(--primary-glow);
+}
+
 .room-item:disabled {
   opacity: 0.5;
   cursor: not-allowed;
@@ -302,6 +341,19 @@ h2 {
   background: rgba(0, 229, 255, 0.15);
   color: #00e5ff;
   border: 1px solid rgba(0, 229, 255, 0.35);
+}
+
+.assigned-badge {
+  font-family: "Rajdhani", sans-serif;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: rgba(0, 255, 136, 0.16);
+  color: var(--primary);
+  border: 1px solid var(--primary-glow);
 }
 
 .room-user-count {
