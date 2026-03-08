@@ -14,6 +14,7 @@ interface UserData {
   email: string;
   displayName: string;
   role: string;
+  roleDescription?: string;
   department?: string;
   assignedRoom?: string;
   company?: string;
@@ -33,6 +34,7 @@ const rooms = ref<OptionItem[]>([]);
 const accessAreas = ref<OptionItem[]>([]);
 
 const editName = ref("");
+const editRoleDescription = ref("");
 const editCompany = ref("");
 const editDepartment = ref("");
 const editAssignedRoom = ref("");
@@ -62,6 +64,7 @@ async function loadUser() {
     userData.value = data;
 
     editName.value = data.displayName || "";
+    editRoleDescription.value = data.roleDescription || "";
     editCompany.value = data.company || "";
     editDepartment.value = data.department || "";
     editAssignedRoom.value = data.assignedRoom || "";
@@ -87,6 +90,7 @@ async function saveProfile() {
   try {
     const updates: Record<string, any> = {
       displayName: editName.value.trim(),
+      roleDescription: editRoleDescription.value.trim() || null,
       company: editCompany.value.trim(),
       department: editDepartment.value,
       assignedRoom: editAssignedRoom.value,
@@ -186,6 +190,10 @@ const roleNeedsRoom = (role: string) => role === "room_admin" || role === "membe
           <div class="field">
             <label>Display Name</label>
             <input v-model="editName" class="input" required />
+          </div>
+          <div class="field">
+            <label>Role description (optional)</label>
+            <input v-model="editRoleDescription" class="input" placeholder="e.g. Floor manager" />
           </div>
           <div class="field">
             <label>Company</label>

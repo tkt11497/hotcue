@@ -168,6 +168,7 @@ async function handleLeave() {
     :recovery-state="signaling.recoveryState.value"
     :users="signaling.users.value"
     :my-id="signaling.myId.value!"
+    :my-role-description="userProfile?.roleDescription ?? undefined"
     :peer-states="webrtc.peerStates"
     :is-muted="webrtc.isMuted.value"
     :is-speaker-on="webrtc.isSpeakerOn.value"

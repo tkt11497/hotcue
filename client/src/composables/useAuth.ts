@@ -16,6 +16,7 @@ export interface UserProfile {
   email: string;
   displayName: string;
   role: UserRole;
+  roleDescription?: string;
   department?: string;
   assignedRoom?: string;
   accessAreas?: string[];
@@ -44,6 +45,7 @@ function initAuthListener() {
           email: data.email,
           displayName: data.displayName,
           role: data.role ?? "member",
+          roleDescription: data.roleDescription ?? undefined,
           department: data.department ?? undefined,
           assignedRoom: data.assignedRoom ?? undefined,
           accessAreas: data.accessAreas ?? undefined,
@@ -84,6 +86,7 @@ export function useAuth() {
     password: string;
     displayName: string;
     role?: UserRole;
+    roleDescription?: string;
     department?: string;
     assignedRoom?: string;
     accessAreas?: string[];
@@ -98,6 +101,7 @@ export function useAuth() {
       role: opts.role ?? "member",
       createdAt: serverTimestamp(),
     };
+    if (opts.roleDescription?.trim()) userData.roleDescription = opts.roleDescription.trim();
     if (opts.department) userData.department = opts.department;
     if (opts.assignedRoom) userData.assignedRoom = opts.assignedRoom;
     if (opts.accessAreas?.length) userData.accessAreas = opts.accessAreas;

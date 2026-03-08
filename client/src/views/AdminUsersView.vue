@@ -18,6 +18,7 @@ interface UserRow {
   email: string;
   displayName: string;
   role: string;
+  roleDescription?: string;
   department?: string;
   assignedRoom?: string;
   company?: string;
@@ -36,6 +37,7 @@ const newEmail = ref("");
 const newPassword = ref("");
 const newDisplayName = ref("");
 const newRole = ref<UserRole>("member");
+const newRoleDescription = ref("");
 const newDepartment = ref("");
 const newAssignedRoom = ref("");
 const newCompany = ref("");
@@ -60,6 +62,7 @@ onMounted(async () => {
         email: data.email,
         displayName: data.displayName,
         role: data.role || "member",
+        roleDescription: data.roleDescription || "",
         department: data.department || "",
         assignedRoom: data.assignedRoom || "",
         company: data.company || "",
@@ -105,6 +108,7 @@ async function handleCreateUser() {
       password: newPassword.value,
       displayName: newDisplayName.value.trim(),
       role: newRole.value,
+      roleDescription: newRoleDescription.value.trim() || undefined,
       department: newDepartment.value || undefined,
       assignedRoom: newAssignedRoom.value || undefined,
       company: newCompany.value.trim() || undefined,
@@ -122,6 +126,7 @@ async function handleCreateUser() {
       email: newEmail.value.trim(),
       displayName: newDisplayName.value.trim(),
       role: newRole.value,
+      roleDescription: newRoleDescription.value.trim() || undefined,
       department: newDepartment.value,
       assignedRoom: newAssignedRoom.value,
       company: newCompany.value.trim(),
@@ -133,6 +138,7 @@ async function handleCreateUser() {
     newPassword.value = "";
     newDisplayName.value = "";
     newRole.value = "member";
+    newRoleDescription.value = "";
     newDepartment.value = "";
     newAssignedRoom.value = "";
     newCompany.value = "";
@@ -211,6 +217,10 @@ const roleNeedsRoom = (role: string) => role === "room_admin" || role === "membe
           </select>
         </div>
         <div class="field">
+          <label>Role description (optional)</label>
+          <input v-model="newRoleDescription" placeholder="e.g. Floor manager, Lead security" class="input" />
+        </div>
+        <div class="field">
           <label>Company (optional)</label>
           <input v-model="newCompany" placeholder="Company name" class="input" />
         </div>
@@ -281,6 +291,7 @@ const roleNeedsRoom = (role: string) => role === "room_admin" || role === "membe
             <th>Assigned Room</th>
             <th>Access Areas</th>
             <th>Role</th>
+            <th>Role description</th>
           </tr>
         </thead>
         <tbody>
@@ -300,6 +311,7 @@ const roleNeedsRoom = (role: string) => role === "room_admin" || role === "membe
             <td>
               <span class="role-tag" :class="u.role">{{ u.role.replace("_", " ") }}</span>
             </td>
+            <td><span class="muted">{{ u.roleDescription || "—" }}</span></td>
           </tr>
         </tbody>
       </table>
@@ -533,6 +545,26 @@ h3 {
   width: 100%;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
+  border-radius: var(--radius-sm);
+  /* Firefox */
+  scrollbar-width: thin;
+  scrollbar-color: var(--primary) var(--border);
+}
+.table-responsive::-webkit-scrollbar {
+  height: 10px;
+}
+.table-responsive::-webkit-scrollbar-track {
+  background: var(--border);
+  border-radius: 5px;
+}
+.table-responsive::-webkit-scrollbar-thumb {
+  background: var(--primary);
+  border-radius: 5px;
+  box-shadow: 0 0 8px var(--primary-glow);
+}
+.table-responsive::-webkit-scrollbar-thumb:hover {
+  background: var(--primary-hover);
+  box-shadow: 0 0 12px var(--primary-glow);
 }
 
 .data-table { width: 100%; border-collapse: collapse; min-width: 700px; }

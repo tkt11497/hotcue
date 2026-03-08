@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from "vue";
+import { db } from "../firebase";
+import { doc, getDoc } from "firebase/firestore";
 import type { RoomUser } from "../composables/useSignaling";
 import type { PeerState } from "../composables/useWebRTC";
 import AudioPeer from "./AudioPeer.vue";
@@ -13,6 +15,7 @@ const props = defineProps<{
   recoveryState: string;
   users: readonly RoomUser[];
   myId: string;
+  myRoleDescription?: string | null;
   peerStates: Map<string, PeerState>;
   isMuted: boolean;
   isSpeakerOn: boolean;
@@ -31,6 +34,29 @@ const emit = defineEmits<{
 
 const otherUsers = computed(() => props.users.filter((u) => u.id !== props.myId));
 const myUser = computed(() => props.users.find((u) => u.id === props.myId));
+
+const peerRoleDescriptions = ref<Record<string, string>>({});
+watch(
+  otherUsers,
+  async (users) => {
+    const next: Record<string, string> = {};
+    for (const u of users) {
+      if (peerRoleDescriptions.value[u.id]) {
+        next[u.id] = peerRoleDescriptions.value[u.id];
+        continue;
+      }
+      try {
+        const snap = await getDoc(doc(db, "users", u.id));
+        const desc = snap.data()?.roleDescription;
+        if (desc) next[u.id] = desc;
+      } catch {
+        // ignore
+      }
+    }
+    peerRoleDescriptions.value = next;
+  },
+  { immediate: true }
+);
 
 const rttClass = computed(() => {
   const rtt = props.latency.rtt;
@@ -225,7 +251,10 @@ onUnmounted(() => {
           <span>{{ (user.username || "?")[0].toUpperCase() }}</span>
           <div class="speaking-ring" v-if="!user.isMuted"></div>
         </div>
-        <span class="name">{{ user.username || "Unknown" }}</span>
+        <span class="name">
+          {{ user.username || "Unknown" }}
+          <span v-if="peerRoleDescriptions[user.id]" class="role-desc">{{ peerRoleDescriptions[user.id] }}</span>
+        </span>
         <div class="status-icon" :class="user.isMuted ? 'muted-icon' : 'active-icon'">
           <svg v-if="!user.isMuted" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
@@ -622,6 +651,15 @@ onUnmounted(() => {
   letter-spacing: 0.5px;
   font-weight: 600;
   text-align: center;
+}
+
+.role-desc {
+  font-size: 0.85rem;
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--text-muted);
+  margin-left: 6px;
 }
 
 .you-tag {
