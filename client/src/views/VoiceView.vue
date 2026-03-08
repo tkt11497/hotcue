@@ -103,7 +103,7 @@ onUnmounted(() => {
   stopWidgetSync();
 });
 
-async function handleJoin(roomId: string) {
+async function handleJoin(roomId: string, setupPassword?: string) {
   if (!userProfile.value || !roomId.trim()) return;
 
   try {
@@ -124,7 +124,7 @@ async function handleJoin(roomId: string) {
       onPeerJoined: () => {},
       onPeerLeft: () => {},
       onSignal: () => {},
-    }, currentRoomName.value || roomId);
+    }, currentRoomName.value || roomId, setupPassword);
 
     startPolling();
     startWidgetSync();

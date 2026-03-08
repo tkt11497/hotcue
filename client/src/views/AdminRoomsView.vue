@@ -17,7 +17,8 @@ const { userProfile, isAdmin } = useAuth();
 interface RoomRow {
   id: string;
   name: string;
-  type: "regular" | "holding" | "security";
+  type: "regular" | "holding" | "security" | "special";
+  setupPassword?: string;
 }
 
 interface AllowedUser {
@@ -36,7 +37,8 @@ interface UserOption {
 const rooms = ref<RoomRow[]>([]);
 const loading = ref(true);
 const newRoomName = ref("");
-const newRoomType = ref<"regular" | "holding" | "security">("regular");
+const newRoomType = ref<"regular" | "holding" | "security" | "special">("regular");
+const newRoomPassword = ref("");
 
 const selectedRoom = ref<string | null>(null);
 const allowedUsers = ref<AllowedUser[]>([]);
@@ -65,6 +67,7 @@ async function loadRooms() {
       id: d.id,
       name: d.data().name || d.id,
       type: d.data().type || "regular",
+      setupPassword: d.data().setupPassword || "",
     }));
   } finally {
     loading.value = false;
@@ -75,13 +78,16 @@ async function createRoom() {
   if (!newRoomName.value.trim()) return;
   if (newRoomType.value === "holding" && holdingExists.value) return;
   if (newRoomType.value === "security" && securityExists.value) return;
+  if (newRoomType.value === "special" && !newRoomPassword.value.trim()) return;
   await addDoc(collection(db, "rooms"), {
     name: newRoomName.value.trim(),
     type: newRoomType.value,
+    setupPassword: newRoomType.value === "special" ? newRoomPassword.value.trim() : "",
     createdBy: userProfile.value?.uid,
     createdAt: serverTimestamp(),
   });
   newRoomName.value = "";
+  newRoomPassword.value = "";
   newRoomType.value = "regular";
   await loadRooms();
 }
@@ -148,8 +154,22 @@ const selectedRoomObj = computed(() => rooms.value.find((r) => r.id === selected
           <option value="regular">Regular</option>
           <option value="holding" :disabled="holdingExists">Holding Channel</option>
           <option value="security" :disabled="securityExists">Security Channel</option>
+          <option value="special">Special (Password)</option>
         </select>
-        <button type="submit" class="btn-sm" :disabled="!newRoomName.trim() || (newRoomType === 'holding' && holdingExists) || (newRoomType === 'security' && securityExists)">Create</button>
+        <input
+          v-if="newRoomType === 'special'"
+          v-model="newRoomPassword"
+          class="input"
+          type="password"
+          placeholder="Setup password"
+        />
+        <button
+          type="submit"
+          class="btn-sm"
+          :disabled="!newRoomName.trim() || (newRoomType === 'holding' && holdingExists) || (newRoomType === 'security' && securityExists) || (newRoomType === 'special' && !newRoomPassword.trim())"
+        >
+          Create
+        </button>
       </form>
 
       <div v-if="loading" class="loading">Loading...</div>
@@ -166,6 +186,7 @@ const selectedRoomObj = computed(() => rooms.value.find((r) => r.id === selected
             <span class="room-name">{{ room.name }}</span>
             <span v-if="room.type === 'holding'" class="holding-badge">HOLDING</span>
             <span v-if="room.type === 'security'" class="security-badge">SECURITY</span>
+            <span v-if="room.type === 'special'" class="special-badge">SPECIAL</span>
           </div>
           <button v-if="isAdmin" class="btn-delete" @click.stop="deleteRoom(room.id)" title="Delete room">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -182,6 +203,7 @@ const selectedRoomObj = computed(() => rooms.value.find((r) => r.id === selected
         Members of "{{ selectedRoomObj?.name }}"
         <span v-if="selectedRoomObj?.type === 'holding'" class="holding-badge">HOLDING</span>
         <span v-if="selectedRoomObj?.type === 'security'" class="security-badge">SECURITY</span>
+        <span v-if="selectedRoomObj?.type === 'special'" class="special-badge">SPECIAL</span>
       </h3>
       <p v-if="selectedRoomObj?.type === 'holding'" class="hint">
         All holding admins and room admins can access this channel automatically.
@@ -190,6 +212,9 @@ const selectedRoomObj = computed(() => rooms.value.find((r) => r.id === selected
       <p v-if="selectedRoomObj?.type === 'security'" class="hint">
         All security admins and security users can access this channel automatically.
         Add members below for explicit access.
+      </p>
+      <p v-if="selectedRoomObj?.type === 'special'" class="hint">
+        All users can join this room with the setup password.
       </p>
 
       <form @submit.prevent="addUserToRoom" class="create-form">
@@ -470,8 +495,22 @@ h3 {
   border: 1px solid rgba(155, 89, 182, 0.3);
 }
 
+.special-badge {
+  font-family: "Rajdhani", sans-serif;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: rgba(0, 229, 255, 0.15);
+  color: #00e5ff;
+  border: 1px solid rgba(0, 229, 255, 0.35);
+}
+
 .room-row.active .holding-badge,
-.room-row.active .security-badge {
+.room-row.active .security-badge,
+.room-row.active .special-badge {
   background: rgba(0,0,0,0.1);
   color: #000;
   border-color: rgba(0,0,0,0.2);

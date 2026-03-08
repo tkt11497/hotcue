@@ -53,7 +53,13 @@ export function useSignaling() {
     for (const id of currentPeers) knownPeers.add(id);
   }, 500);
 
-  async function joinRoom(room: string, username: string, cbs: SignalCallbacks, roomName?: string) {
+  async function joinRoom(
+    room: string,
+    username: string,
+    cbs: SignalCallbacks,
+    roomName?: string,
+    setupPassword?: string
+  ) {
     if (connected.value) return;
     callbacks = cbs;
 
@@ -65,24 +71,27 @@ export function useSignaling() {
     const profileData = userProfileSnap.data();
     const globalRole = profileData?.role;
 
-    if (globalRole === "admin" || globalRole === "holding_admin") {
+    const roomSnap = await getDoc(doc(db, "rooms", room));
+    const roomData = roomSnap.data();
+    const roomType = roomData?.type;
+
+    if (roomType === "special") {
+      const expectedPassword = String(roomData?.setupPassword ?? "");
+      if (!expectedPassword || setupPassword !== expectedPassword) {
+        throw new Error("Invalid room password");
+      }
+    } else if (globalRole === "admin" || globalRole === "holding_admin") {
       // can join any room
     } else if (globalRole === "room_admin") {
-      const roomSnap = await getDoc(doc(db, "rooms", room));
-      const roomType = roomSnap.data()?.type;
       const userAssignedRoom = profileData?.assignedRoom;
       if (roomType !== "holding" && room !== userAssignedRoom) {
         throw new Error("You are not allowed in this room");
       }
     } else if (globalRole === "security_admin") {
-      const roomSnap = await getDoc(doc(db, "rooms", room));
-      const roomType = roomSnap.data()?.type;
       if (roomType !== "security" && roomType !== "holding") {
         throw new Error("You are not allowed in this room");
       }
     } else if (globalRole === "security") {
-      const roomSnap = await getDoc(doc(db, "rooms", room));
-      const roomType = roomSnap.data()?.type;
       if (roomType !== "security") {
         throw new Error("You are not allowed in this room");
       }

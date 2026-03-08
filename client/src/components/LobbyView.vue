@@ -13,12 +13,13 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  join: [roomId: string];
+  join: [roomId: string, setupPassword?: string];
 }>();
 
 interface RoomEntry {
   id: string;
   name: string;
+  type: "regular" | "holding" | "security" | "special";
   userCount: number;
 }
 
@@ -41,9 +42,16 @@ watch(userProfile, async (profile) => {
       } catch {
         // ignore count errors (e.g. missing subcollection)
       }
-      const entry: RoomEntry = { id: roomDoc.id, name: data.name || roomDoc.id, userCount };
+      const entry: RoomEntry = {
+        id: roomDoc.id,
+        name: data.name || roomDoc.id,
+        type: data.type || "regular",
+        userCount,
+      };
 
-      if (canAccessAllRooms.value) {
+      if (entry.type === "special") {
+        allowed.push(entry);
+      } else if (canAccessAllRooms.value) {
         allowed.push(entry);
       } else if (profile.role === "room_admin") {
         if (roomDoc.id === profile.assignedRoom || data.type === "holding") {
@@ -78,6 +86,16 @@ watch(userProfile, async (profile) => {
 }, { immediate: true });
 
 function joinRoom(roomId: string) {
+  const room = rooms.value.find((r) => r.id === roomId);
+  if (!room) return;
+
+  if (room.type === "special") {
+    const input = window.prompt(`Enter password for ${room.name}`);
+    if (input === null) return;
+    emit("join", roomId, input);
+    return;
+  }
+
   emit("join", roomId);
 }
 </script>
@@ -117,6 +135,7 @@ function joinRoom(roomId: string) {
             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
           </svg>
           <span class="room-name">{{ room.name }}</span>
+          <span v-if="room.type === 'special'" class="special-badge">SPECIAL</span>
           <span class="room-user-count" :title="`${room.userCount} in room`">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
@@ -270,6 +289,19 @@ h2 {
 
 .room-name {
   flex: 1;
+}
+
+.special-badge {
+  font-family: "Rajdhani", sans-serif;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: rgba(0, 229, 255, 0.15);
+  color: #00e5ff;
+  border: 1px solid rgba(0, 229, 255, 0.35);
 }
 
 .room-user-count {
