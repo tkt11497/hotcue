@@ -2,9 +2,11 @@
 import { onUnmounted, watch } from "vue";
 import { useRouter } from "vue-router";
 import { useAuth } from "./composables/useAuth";
+import { useSignaling } from "./composables/useSignaling";
 import { useTaskNotifications } from "./composables/useTaskNotifications";
 
 const { userProfile, authReady, isAdmin, isSecurityRole, isRoomAdmin, logout } = useAuth();
+const { leaveRoom } = useSignaling();
 const router = useRouter();
 const taskNotifications = useTaskNotifications();
 
@@ -22,6 +24,11 @@ onUnmounted(() => {
 
 async function handleLogout() {
   taskNotifications.stop();
+  try {
+    await leaveRoom();
+  } catch {
+    // Ensure we still logout even if leaveRoom fails (e.g. not in a room)
+  }
   await logout();
   router.push("/login");
 }

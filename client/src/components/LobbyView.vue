@@ -2,7 +2,7 @@
 import { ref, watch } from "vue";
 import { useAuth } from "../composables/useAuth";
 import { db } from "../firebase";
-import { collection, getDocs, doc, getDoc } from "firebase/firestore";
+import { collection, getDocs, getCountFromServer, doc, getDoc } from "firebase/firestore";
 
 const { userProfile, canAccessAllRooms } = useAuth();
 let roomsLoaded = false;
@@ -19,6 +19,7 @@ const emit = defineEmits<{
 interface RoomEntry {
   id: string;
   name: string;
+  userCount: number;
 }
 
 const rooms = ref<RoomEntry[]>([]);
@@ -33,7 +34,14 @@ watch(userProfile, async (profile) => {
 
     for (const roomDoc of roomsSnap.docs) {
       const data = roomDoc.data();
-      const entry: RoomEntry = { id: roomDoc.id, name: data.name || roomDoc.id };
+      let userCount = 0;
+      try {
+        const countSnap = await getCountFromServer(collection(db, "rooms", roomDoc.id, "users"));
+        userCount = countSnap.data().count;
+      } catch {
+        // ignore count errors (e.g. missing subcollection)
+      }
+      const entry: RoomEntry = { id: roomDoc.id, name: data.name || roomDoc.id, userCount };
 
       if (canAccessAllRooms.value) {
         allowed.push(entry);
@@ -109,6 +117,15 @@ function joinRoom(roomId: string) {
             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
           </svg>
           <span class="room-name">{{ room.name }}</span>
+          <span class="room-user-count" :title="`${room.userCount} in room`">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+              <circle cx="9" cy="7" r="4" />
+              <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+              <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+            </svg>
+            {{ room.userCount }}
+          </span>
           <svg class="join-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polyline points="9 18 15 12 9 6" />
           </svg>
@@ -253,6 +270,25 @@ h2 {
 
 .room-name {
   flex: 1;
+}
+
+.room-user-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  min-width: 2ch;
+}
+
+.room-user-count svg {
+  flex-shrink: 0;
+  opacity: 0.8;
+}
+
+.room-item:hover:not(:disabled) .room-user-count {
+  color: var(--primary);
 }
 
 .join-arrow {
